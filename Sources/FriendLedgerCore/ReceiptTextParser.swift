@@ -1,7 +1,9 @@
 import Foundation
 
 public enum ReceiptTextParser {
-    public static func parse(_ text: String, imageFingerprint: String? = nil) throws -> ReceiptDraft {
+    public static func parse(
+        _ text: String, imageFingerprint: String? = nil, textConfidence: Double? = nil
+    ) throws -> ReceiptDraft {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw FinanceError.invalidField("收据识别文本，未发现可识别内容")
         }
@@ -16,6 +18,8 @@ public enum ReceiptTextParser {
         var totals: [ReceiptTotalCandidate] = []
         var items: [ReceiptItem] = []
         var taxes: [Int64] = []
+        var subtotals: [Int64] = []
+        var tenders: [Int64] = []
         var warnings = ["识别结果必须核对；商家、日期、金额及明细均可能识别不完整。"]
         var candidateRows: [String] = []
         let taxLabelPattern = try NSRegularExpression(pattern: #"^(?:SALES\s+)?TAX\s*\d*(?:\s+[\d.]+\s*%)?$"#)
@@ -53,6 +57,11 @@ public enum ReceiptTextParser {
             } else if matches.count == 1,
                       taxLabelPattern.firstMatch(in: upper, range: NSRange(upper.startIndex..<upper.endIndex, in: upper)) != nil {
                 taxes.append(amount)
+            } else if matches.count == 1, upper.contains("SUBTOTAL") || upper.contains("SUB TOTAL") {
+                subtotals.append(amount)
+            } else if matches.count == 1, !upper.contains("CHANGE"),
+                      ["VISA", "MASTERCARD", "AMEX", "DEBIT", "CREDIT", "TEND", "USD"].contains(where: { upper.contains($0) }) {
+                tenders.append(amount)
             } else if !label.isEmpty, matches.count == 1,
                       !["TOTAL", "TAX", "CASH", "CHANGE", "TENDER", "VISA", "MASTERCARD",
                         "AMEX", "DEBIT", "CREDIT", "BALANCE", "SAVING", "DISCOUNT", "COUPON",
@@ -72,11 +81,84 @@ public enum ReceiptTextParser {
         let days = receiptDays(in: text)
         if days.count > 1 { warnings.append("发现多个不同日期，未自动选择，请手动确认消费日期。") }
         if days.isEmpty { warnings.append("未识别到消费日期，默认使用今天，请核对。") }
+        let singleTax = taxes.count == 1 ? taxes.first : nil
+        let singleDay = days.count == 1 ? days.first : nil
+        let checks = makeChecks(
+            merchant: merchant, items: items, tax: singleTax, totals: totals, subtotals: subtotals,
+            tenders: tenders, day: singleDay, textConfidence: textConfidence
+        )
         return ReceiptDraft(
             imageFingerprint: imageFingerprint, rawText: text, suggestedMerchantName: merchant,
             totalCandidates: totals, suggestedItems: items,
-            suggestedTaxCents: taxes.count == 1 ? taxes.first : nil, warnings: warnings,
-            suggestedDay: days.count == 1 ? days.first : nil
+            suggestedTaxCents: singleTax, warnings: warnings,
+            suggestedDay: singleDay, checks: checks, textConfidence: textConfidence
+        )
+    }
+
+    private static func money(_ cents: Int64) -> String {
+        String(format: "$%lld.%02lld", cents / 100, cents % 100)
+    }
+
+    /// Cross-checks that need no extra data: the card amount, subtotal + tax and the item sum all point
+    /// at the same total on a correctly read receipt, and rarely agree by accident on a misread one.
+    private static func makeChecks(
+        merchant: String?, items: [ReceiptItem], tax: Int64?, totals: [ReceiptTotalCandidate],
+        subtotals: [Int64], tenders: [Int64], day: ReceiptDay?, textConfidence: Double?
+    ) -> ReceiptChecks {
+        var confirmations: [String] = []
+        var problems: [String] = []
+        let amounts = Set(totals.map(\.amountCents))
+        var total = ReceiptConfidence.low
+        if amounts.count == 1, let value = amounts.first {
+            total = .medium
+            if tenders.contains(value) {
+                confirmations.append("总额与刷卡 / 付款金额一致")
+                total = .high
+            }
+            if subtotals.count == 1, let subtotal = subtotals.first {
+                if subtotal + (tax ?? 0) == value {
+                    confirmations.append(tax == nil ? "小计等于总额" : "小计 + 税 = 总额")
+                    total = .high
+                } else if subtotal < value {
+                    problems.append("小计 \(money(subtotal)) + 税 \(money(tax ?? 0)) 不等于总额 \(money(value))，可能有小费、服务费或识别错误")
+                }
+            }
+            if !tenders.isEmpty, !tenders.contains(value) {
+                let paid = Set(tenders).sorted().map(money).joined(separator: " / ")
+                problems.append("付款金额 \(paid) 与总额 \(money(value)) 不一致，可能漏读了数字，请对照小票")
+                if total != .high { total = .low }
+            }
+            if total == .medium { problems.append("总额没有被其他金额验证，请对照小票核对") }
+        } else if amounts.count > 1 {
+            problems.append("发现多个不同总额，请选择最终支付金额")
+        } else {
+            problems.append("未找到总额，请手动输入")
+        }
+        if subtotals.count == 1, let subtotal = subtotals.first, !items.isEmpty {
+            let sum = items.reduce(Int64(0)) { $0 + $1.lineTotalCents }
+            if sum == subtotal {
+                confirmations.append("商品合计与小计一致")
+            } else {
+                problems.append("识别到的商品合计 \(money(sum)) 与小计 \(money(subtotal)) 不同，明细可能漏项（不影响记账金额）")
+            }
+        }
+        var merchantLevel = ReceiptConfidence.low
+        if let merchant {
+            merchantLevel = MerchantTypeClassifier.suggest(merchantName: merchant, allowFuzzy: false) != nil ? .high : .medium
+        } else {
+            problems.append("未识别到商店名称")
+        }
+        if let textConfidence, textConfidence < 0.6 {
+            problems.append("照片文字清晰度较低（约 \(Int(textConfidence * 100))%），建议重拍或逐项核对")
+        }
+        let dateLevel: ReceiptConfidence = day == nil ? .low : .high
+        var score = total == .high ? 50 : total == .medium ? 25 : 0
+        score += dateLevel == .high ? 10 : 0
+        score += merchantLevel == .high ? 10 : merchantLevel == .medium ? 5 : 0
+        score += confirmations.count * 5 - problems.count * 5 + min(items.count, 10) + (tax == nil ? 0 : 5)
+        return ReceiptChecks(
+            merchant: merchantLevel, date: dateLevel, total: total,
+            confirmations: confirmations, problems: problems, score: score
         )
     }
 

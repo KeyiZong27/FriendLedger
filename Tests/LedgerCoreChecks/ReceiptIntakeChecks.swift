@@ -49,6 +49,31 @@ func runReceiptIntakeChecks() throws {
     try check(slope.count == 8 && slope.allSatisfy { $0.contains("ITEM") && $0.contains(".99") },
               "Tilt must be compensated: \(slope)")
 
+    let ok = try ReceiptTextParser.parse("""
+    CORNER MARKET
+    11/10/2026
+    MILK 6.00
+    SUBTOTAL 6.00
+    TAX 0.48
+    TOTAL 6.48
+    VISA TEND 6.48
+    """)
+    try check(ok.checks.total == .high && ok.checks.date == .high && ok.checks.merchant == .high,
+              "A receipt whose numbers agree must be highly trusted")
+    try check(ok.checks.confirmations.contains { $0.contains("刷卡") } && ok.checks.confirmations.contains { $0.contains("小计 + 税") }
+              && ok.checks.confirmations.contains { $0.contains("商品合计") }, "All agreeing cross-checks must be listed")
+    let misread = try ReceiptTextParser.parse("TRADER JOES\nSUBTOTAL 186.06\nTOTAL $186.00\nUSD$ 186.06")
+    try check(misread.checks.total == .low && misread.checks.problems.contains { $0.contains("付款金额") },
+              "A total that differs from the card amount must be flagged: \(misread.checks)")
+    let unverified = try ReceiptTextParser.parse("SHOP\nTOTAL 5.00")
+    try check(unverified.checks.total == .medium && !unverified.checks.problems.isEmpty, "An isolated total is not verified")
+    let missingTotal = try ReceiptTextParser.parse("SHOP\nMILK 5.00")
+    try check(missingTotal.checks.total == .low, "A missing total is low confidence")
+    try check(ok.checks.score > misread.checks.score && misread.checks.score > missingTotal.checks.score,
+              "Scores must rank clean readings above doubtful ones")
+    let blurry = try ReceiptTextParser.parse("SHOP\nTOTAL 5.00", textConfidence: 0.4)
+    try check(blurry.checks.problems.contains { $0.contains("清晰度") }, "Blurry text must be reported")
+
     let walmart = try ReceiptTextParser.parse("""
     Give us feedback @ survey.walmart.com
     Thank you! ID #: 7QDD9S15SK2

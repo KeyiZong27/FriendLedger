@@ -1,9 +1,10 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import VisionKit
 
 enum ReceiptSource {
-    case data(Data)
+    case pages([Data])
     case library(PhotosPickerItem)
 }
 
@@ -12,35 +13,35 @@ struct ReceiptImageItem: Identifiable {
     let source: ReceiptSource
 }
 
-struct CameraPicker: UIViewControllerRepresentable {
-    let onImage: (Data) -> Void
+struct DocumentScanner: UIViewControllerRepresentable {
+    let onPages: ([Data]) -> Void
     let onCancel: () -> Void
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate = context.coordinator
-        return picker
+    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
+        let controller = VNDocumentCameraViewController()
+        controller.delegate = context.coordinator
+        return controller
     }
 
-    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ controller: VNDocumentCameraViewController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        private let parent: CameraPicker
-        init(_ parent: CameraPicker) { self.parent = parent }
+    final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
+        private let parent: DocumentScanner
+        init(_ parent: DocumentScanner) { self.parent = parent }
 
-        func imagePickerController(
-            _ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        func documentCameraViewController(
+            _ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan
         ) {
-            if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.9) {
-                parent.onImage(data)
-            } else {
-                parent.onCancel()
-            }
+            let pages = (0..<min(scan.pageCount, 6)).compactMap { scan.imageOfPage(at: $0).jpegData(compressionQuality: 0.9) }
+            if pages.isEmpty { parent.onCancel() } else { parent.onPages(pages) }
         }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.onCancel() }
+        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) { parent.onCancel() }
+
+        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
+            parent.onCancel()
+        }
     }
 }
 
@@ -116,10 +117,29 @@ struct ReceiptReviewView: View {
             if let message {
                 Section { Text(message).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("receipt-error") }
             }
+            let problems = draft.checks.problems
+            if !draft.checks.confirmations.isEmpty || !problems.isEmpty {
+                Section {
+                    ForEach(draft.checks.confirmations, id: \.self) {
+                        Label($0, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green)
+                    }
+                    ForEach(problems, id: \.self) {
+                        Label($0, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("自动核对")
+                } footer: {
+                    Text("这是自动交叉检查，不能代替你对照小票确认。")
+                }
+                .accessibilityIdentifier("receipt-checks")
+            }
             Section {
-                TextField("商店名称", text: $merchantName)
-                    .accessibilityIdentifier("receipt-merchant")
-                    .onChange(of: merchantName) { _, _ in refreshType(draft) }
+                HStack {
+                    TextField("商店名称", text: $merchantName)
+                        .accessibilityIdentifier("receipt-merchant")
+                        .onChange(of: merchantName) { _, _ in refreshType(draft) }
+                    badge(typeSource == .remembered ? .high : draft.checks.merchant)
+                }
                 Picker("分类", selection: Binding(
                     get: { businessType },
                     set: { businessType = $0; typeSource = .chosen }
@@ -133,8 +153,11 @@ struct ReceiptReviewView: View {
                 Text("商店")
             }
             Section {
-                TextField("总额（美元）", text: $amountText).keyboardType(.decimalPad)
-                    .accessibilityIdentifier("receipt-amount")
+                HStack {
+                    TextField("总额（美元）", text: $amountText).keyboardType(.decimalPad)
+                        .accessibilityIdentifier("receipt-amount")
+                    badge(draft.checks.total)
+                }
                 let candidates = Array(Set(draft.totalCandidates.map(\.amountCents))).sorted()
                 if candidates.count > 1 {
                     ForEach(candidates, id: \.self) { cents in
@@ -143,7 +166,10 @@ struct ReceiptReviewView: View {
                         }
                     }
                 }
-                DatePicker("日期", selection: $date, displayedComponents: .date)
+                HStack {
+                    DatePicker("日期", selection: $date, displayedComponents: .date)
+                    badge(draft.checks.date)
+                }
             } header: {
                 Text("金额与日期")
             } footer: {
@@ -159,11 +185,23 @@ struct ReceiptReviewView: View {
                     }
                 }
             }
-            if !draft.warnings.isEmpty {
+            let extraWarnings = draft.warnings.dropFirst().filter { !$0.contains("TOTAL") && !$0.contains("多个不同总额") }
+            if !extraWarnings.isEmpty {
                 Section("请核对") {
-                    ForEach(draft.warnings, id: \.self) { Text($0).font(.footnote).foregroundStyle(.orange) }
+                    ForEach(extraWarnings, id: \.self) { Text($0).font(.footnote).foregroundStyle(.orange) }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private func badge(_ level: ReceiptConfidence) -> some View {
+        switch level {
+        case .high:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityLabel("识别可信度高")
+        case .medium:
+            Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange).accessibilityLabel("识别可信度一般，请核对")
+        case .low:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red).accessibilityLabel("识别可信度低，请核对")
         }
     }
 
@@ -187,18 +225,18 @@ struct ReceiptReviewView: View {
 
     private func recognize() async {
         do {
-            let data: Data
+            let pages: [Data]
             switch image.source {
-            case .data(let bytes): data = bytes
+            case .pages(let scanned): pages = scanned
             case .library(let item):
                 guard let bytes = try await item.loadTransferable(type: Data.self) else {
                     phase = .failed("无法读取所选照片。")
                     return
                 }
-                data = bytes
+                pages = [bytes]
             }
-            phase = .working("正在本机识别收据…")
-            let draft = try await LocalReceiptRecognizer.recognize(imageData: data)
+            phase = .working("正在优化图片并在本机识别…")
+            let draft = try await LocalReceiptRecognizer.recognize(pages: pages)
             merchantName = draft.suggestedMerchantName ?? ""
             if let cents = draft.suggestedTotalCents { amountText = Self.plain(cents) }
             if let day = draft.suggestedDay,

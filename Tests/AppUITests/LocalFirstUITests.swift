@@ -107,6 +107,8 @@ final class LocalFirstUITests: XCTestCase {
         let type = app.descendants(matching: .any)["receipt-type"].firstMatch
         XCTAssertTrue(type.label.contains("超市"), "Store type must be chosen automatically, got \(type.label)")
         XCTAssertTrue(app.staticTexts["receipt-type-hint"].label.contains("自动判断"))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "小计 + 税 = 总额")).firstMatch.exists,
+                      "The automatic cross-check must confirm subtotal + tax = total")
         app.buttons["save-receipt"].tap()
         let total = app.staticTexts["expense-total"]
         XCTAssertTrue(total.waitForExistence(timeout: 10))

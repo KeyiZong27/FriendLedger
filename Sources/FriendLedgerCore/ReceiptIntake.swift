@@ -26,8 +26,8 @@ public enum MerchantTypeClassifier {
     ]
 
     /// Most specific (longest) matching keyword in the merchant name wins; item words are weaker evidence.
-    public static func suggest(merchantName: String, itemNames: [String] = []) -> String? {
-        if let match = bestMatch(in: merchantName) { return match }
+    public static func suggest(merchantName: String, itemNames: [String] = [], allowFuzzy: Bool = true) -> String? {
+        if let match = bestMatch(in: merchantName, allowFuzzy: allowFuzzy) { return match }
         let itemTypes = itemNames.compactMap { bestMatch(in: $0) }
         let counts = Dictionary(grouping: itemTypes, by: { $0 }).mapValues(\.count)
         guard let top = counts.max(by: { $0.value < $1.value }), top.value >= 2,
@@ -35,7 +35,7 @@ public enum MerchantTypeClassifier {
         return top.key
     }
 
-    private static func bestMatch(in text: String) -> String? {
+    private static func bestMatch(in text: String, allowFuzzy: Bool = true) -> String? {
         let words = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US"))
             .unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? Character($0) : " " }
         let normalized = " " + String(words).split(separator: " ").joined(separator: " ") + " "
@@ -47,7 +47,7 @@ public enum MerchantTypeClassifier {
                 if matched, keyword.count > (best?.length ?? 0) { best = (type, keyword.count) }
             }
         }
-        if best == nil {
+        if best == nil, allowFuzzy {
             // Photos misread a letter or two ("FRADER JOES"); allow one error in long brand names only.
             for (type, keywords) in rules {
                 for keyword in keywords where keyword.count >= 7 && fuzzyContains(normalized, keyword) {

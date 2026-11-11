@@ -89,6 +89,32 @@ public struct ReceiptTotalCandidate: Codable, Equatable, Sendable {
     }
 }
 
+public enum ReceiptConfidence: String, Codable, Sendable {
+    case high, medium, low
+}
+
+/// What the app could cross-check on its own. These guide your review; they never replace it.
+public struct ReceiptChecks: Sendable {
+    public let merchant: ReceiptConfidence
+    public let date: ReceiptConfidence
+    public let total: ReceiptConfidence
+    /// Confirmations such as "小计 + 税 = 总额".
+    public let confirmations: [String]
+    /// Mismatches or weak spots to look at before saving.
+    public let problems: [String]
+    public let score: Int
+
+    public init(merchant: ReceiptConfidence = .low, date: ReceiptConfidence = .low, total: ReceiptConfidence = .low,
+                confirmations: [String] = [], problems: [String] = [], score: Int = 0) {
+        self.merchant = merchant
+        self.date = date
+        self.total = total
+        self.confirmations = confirmations
+        self.problems = problems
+        self.score = score
+    }
+}
+
 public struct ReceiptDay: Codable, Equatable, Sendable {
     public let year: Int
     public let month: Int
@@ -111,7 +137,9 @@ public struct ReceiptDraft: Identifiable, Sendable {
     public let suggestedTaxCents: Int64?
     public let warnings: [String]
     public let suggestedDay: ReceiptDay?
-
+    public let checks: ReceiptChecks
+    /// Average Vision confidence (0...1) when the text came from a photo.
+    public let textConfidence: Double?
     public var suggestedTotalCents: Int64? {
         let amounts = Set(totalCandidates.map(\.amountCents))
         return amounts.count == 1 ? amounts.first : nil
@@ -121,7 +149,7 @@ public struct ReceiptDraft: Identifiable, Sendable {
         id: String = UUID().uuidString, imageFingerprint: String? = nil, rawText: String,
         suggestedMerchantName: String?, totalCandidates: [ReceiptTotalCandidate],
         suggestedItems: [ReceiptItem], suggestedTaxCents: Int64?, warnings: [String],
-        suggestedDay: ReceiptDay? = nil
+        suggestedDay: ReceiptDay? = nil, checks: ReceiptChecks = ReceiptChecks(), textConfidence: Double? = nil
     ) {
         self.id = id
         self.imageFingerprint = imageFingerprint
@@ -132,6 +160,8 @@ public struct ReceiptDraft: Identifiable, Sendable {
         self.suggestedTaxCents = suggestedTaxCents
         self.warnings = warnings
         self.suggestedDay = suggestedDay
+        self.checks = checks
+        self.textConfidence = textConfidence
     }
 }
 

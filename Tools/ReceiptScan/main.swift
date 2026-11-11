@@ -29,6 +29,10 @@ for path in paths {
               + draft.totalCandidates.map { "\($0.label)=\(money($0.amountCents))" }.joined(separator: ", "))
         print("tax:    \(draft.suggestedTaxCents.map(money) ?? "(none)")")
         print("items:  \(draft.suggestedItems.count)")
+        print("trust:  store=\(draft.checks.merchant.rawValue) date=\(draft.checks.date.rawValue) "
+              + "total=\(draft.checks.total.rawValue) ocr=\(draft.textConfidence.map { String(format: "%.0f%%", $0 * 100) } ?? "-")")
+        for note in draft.checks.confirmations { print("  ok:   \(note)") }
+        for problem in draft.checks.problems { print("  CHECK: \(problem)") }
         for item in draft.suggestedItems { print("   \(item.name)  \(money(item.lineTotalCents))") }
         for warning in draft.warnings.dropFirst() { print("warn:   \(warning)") }
         if showRaw { print("--- raw OCR text ---\n\(draft.rawText)\n--- end ---") }

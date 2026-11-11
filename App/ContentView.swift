@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import VisionKit
 
 struct ContentView: View {
     @ObservedObject var store: LedgerStore
@@ -11,7 +12,7 @@ struct ContentView: View {
     @State private var showingCamera = false
     @State private var showingLibrary = false
     @State private var libraryItem: PhotosPickerItem?
-    @State private var capturedPhoto: Data?
+    @State private var capturedPages: [Data]?
     @State private var receiptImage: ReceiptImageItem?
     @State private var entryToDelete: LedgerEntry?
 
@@ -114,7 +115,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("拍照记账", systemImage: "camera") { showingCamera = true }
-                            .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                            .disabled(!VNDocumentCameraViewController.isSupported)
                             .accessibilityIdentifier("add-camera")
                         Button("从相册选择", systemImage: "photo.on.rectangle") { showingLibrary = true }
                             .accessibilityIdentifier("add-library")
@@ -123,7 +124,7 @@ struct ContentView: View {
                         #if DEBUG
                         if LedgerStore.isUITestProfile {
                             Button("使用测试收据图片") {
-                                receiptImage = ReceiptImageItem(source: .data(SampleReceipt.pngData()))
+                                receiptImage = ReceiptImageItem(source: .pages([SampleReceipt.pngData()]))
                             }
                             .accessibilityIdentifier("add-test-receipt")
                         }
@@ -142,13 +143,13 @@ struct ContentView: View {
                 libraryItem = nil
             }
             .fullScreenCover(isPresented: $showingCamera, onDismiss: {
-                if let data = capturedPhoto {
-                    receiptImage = ReceiptImageItem(source: .data(data))
-                    capturedPhoto = nil
+                if let pages = capturedPages {
+                    receiptImage = ReceiptImageItem(source: .pages(pages))
+                    capturedPages = nil
                 }
             }) {
-                CameraPicker(onImage: { capturedPhoto = $0; showingCamera = false },
-                             onCancel: { showingCamera = false })
+                DocumentScanner(onPages: { capturedPages = $0; showingCamera = false },
+                                onCancel: { showingCamera = false })
                     .ignoresSafeArea()
             }
             .sheet(item: $receiptImage) { item in
