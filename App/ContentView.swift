@@ -1,7 +1,4 @@
-import PhotosUI
 import SwiftUI
-import UIKit
-import VisionKit
 
 struct ContentView: View {
     @ObservedObject var store: LedgerStore
@@ -9,11 +6,6 @@ struct ContentView: View {
     @State private var selectedID: String?
     @State private var showingSettings = false
     @State private var showingNewEntry = false
-    @State private var showingCamera = false
-    @State private var showingLibrary = false
-    @State private var libraryItem: PhotosPickerItem?
-    @State private var capturedPages: [Data]?
-    @State private var receiptImage: ReceiptImageItem?
     @State private var entryToDelete: LedgerEntry?
 
     private var selected: StoredLedger? {
@@ -113,47 +105,11 @@ struct ContentView: View {
                         .accessibilityIdentifier("settings-button")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("拍照记账", systemImage: "camera") { showingCamera = true }
-                            .disabled(!VNDocumentCameraViewController.isSupported)
-                            .accessibilityIdentifier("add-camera")
-                        Button("从相册选择", systemImage: "photo.on.rectangle") { showingLibrary = true }
-                            .accessibilityIdentifier("add-library")
-                        Button("手动输入", systemImage: "square.and.pencil") { showingNewEntry = true }
-                            .accessibilityIdentifier("add-manual")
-                        #if DEBUG
-                        if LedgerStore.isUITestProfile {
-                            Button("使用测试收据图片") {
-                                receiptImage = ReceiptImageItem(source: .pages([SampleReceipt.pngData()]))
-                            }
-                            .accessibilityIdentifier("add-test-receipt")
-                        }
-                        #endif
-                    } label: { Image(systemName: "plus") }
+                    Button("记一笔", systemImage: "plus") { showingNewEntry = true }
                         .disabled(selected == nil || !store.storageReady
                                   || (selected?.ledger.isOwner == false && selected?.isAvailable == false))
-                        .accessibilityLabel("记一笔")
                         .accessibilityIdentifier("new-entry")
                 }
-            }
-            .photosPicker(isPresented: $showingLibrary, selection: $libraryItem, matching: .images)
-            .onChange(of: libraryItem) { _, item in
-                guard let item else { return }
-                receiptImage = ReceiptImageItem(source: .library(item))
-                libraryItem = nil
-            }
-            .fullScreenCover(isPresented: $showingCamera, onDismiss: {
-                if let pages = capturedPages {
-                    receiptImage = ReceiptImageItem(source: .pages(pages))
-                    capturedPages = nil
-                }
-            }) {
-                DocumentScanner(onPages: { capturedPages = $0; showingCamera = false },
-                                onCancel: { showingCamera = false })
-                    .ignoresSafeArea()
-            }
-            .sheet(item: $receiptImage) { item in
-                if let selected { ReceiptReviewView(store: store, recordID: selected.id, image: item) }
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(store: store, selectedID: $selectedID)
@@ -311,19 +267,6 @@ struct SettingsView: View {
                             Text("对方接受邀请后，可一起往这个账本里添加记录。对方必须主动接受。")
                         }
                     }
-                }
-                Section {
-                    Toggle("本机大模型辅助识别（实验性）", isOn: Binding(
-                        get: { store.useOnDeviceModel }, set: { store.setUseOnDeviceModel($0) }
-                    ))
-                    .disabled(!LedgerStore.onDeviceModelAvailable)
-                    .accessibilityIdentifier("settings-model-toggle")
-                } header: {
-                    Text("收据识别")
-                } footer: {
-                    Text(LedgerStore.onDeviceModelAvailable
-                         ? "使用 Apple 在手机上运行的模型帮助挑选商店和金额，不上传任何内容。它读出的数字只有在小票上确实印着、并通过付款金额 / 小计核对后才会采用。该设置只影响本机。"
-                         : "此设备不支持或未开启 Apple Intelligence（需要较新的 iPhone，且所在地区提供该功能），将只使用规则识别。")
                 }
                 Section("云端") {
                     Button("从当前 iCloud 加载账本", systemImage: "icloud.and.arrow.down") {

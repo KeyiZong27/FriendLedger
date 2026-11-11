@@ -138,10 +138,6 @@ public struct ReceiptDraft: Identifiable, Sendable {
     public let warnings: [String]
     public let suggestedDay: ReceiptDay?
     public let checks: ReceiptChecks
-    /// Average Vision confidence (0...1) when the text came from a photo.
-    public let textConfidence: Double?
-    /// True when a verified value came from an on-device language model rather than the rules.
-    public let usedOnDeviceModel: Bool
     public var suggestedTotalCents: Int64? {
         let amounts = Set(totalCandidates.map(\.amountCents))
         return amounts.count == 1 ? amounts.first : nil
@@ -151,8 +147,7 @@ public struct ReceiptDraft: Identifiable, Sendable {
         id: String = UUID().uuidString, imageFingerprint: String? = nil, rawText: String,
         suggestedMerchantName: String?, totalCandidates: [ReceiptTotalCandidate],
         suggestedItems: [ReceiptItem], suggestedTaxCents: Int64?, warnings: [String],
-        suggestedDay: ReceiptDay? = nil, checks: ReceiptChecks = ReceiptChecks(), textConfidence: Double? = nil,
-        usedOnDeviceModel: Bool = false
+        suggestedDay: ReceiptDay? = nil, checks: ReceiptChecks = ReceiptChecks()
     ) {
         self.id = id
         self.imageFingerprint = imageFingerprint
@@ -164,8 +159,6 @@ public struct ReceiptDraft: Identifiable, Sendable {
         self.warnings = warnings
         self.suggestedDay = suggestedDay
         self.checks = checks
-        self.textConfidence = textConfidence
-        self.usedOnDeviceModel = usedOnDeviceModel
     }
 }
 

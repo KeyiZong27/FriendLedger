@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 import FriendLedgerCore
 
@@ -26,29 +25,6 @@ func runReceiptIntakeChecks() throws {
     try check(MerchantTypeClassifier.suggest(merchantName: "Wa1mart") == "超市", "One misread digit must still classify")
     try check(MerchantTypeClassifier.suggest(merchantName: "Hotel Intel") == "住宿", "Words containing tel must not be noise")
 
-    // Real photos: labels and prices arrive as separate blocks, on a tilted page.
-    func piece(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat) -> ReceiptTextPiece {
-        ReceiptTextPiece(text: text, box: CGRect(x: x, y: y, width: width, height: 0.02))
-    }
-    let tilted = ReceiptLayout.rows([
-        piece("SUBTOTAL", x: 0.1, y: 0.50, width: 0.2), piece("27.13", x: 0.7, y: 0.51, width: 0.1),
-        piece("TOTAL", x: 0.1, y: 0.40, width: 0.15), piece("29.02", x: 0.7, y: 0.405, width: 0.1),
-        piece("MILK", x: 0.1, y: 0.60, width: 0.1), piece("4.72", x: 0.7, y: 0.60, width: 0.1)
-    ])
-    try check(tilted == ["MILK 4.72", "SUBTOTAL 27.13", "TOTAL 29.02"], "Rows must join labels with prices: \(tilted)")
-    let slope = ReceiptLayout.rows((0..<8).flatMap { row -> [ReceiptTextPiece] in
-        let y = 0.8 - CGFloat(row) * 0.05
-        // A 6-degree-style tilt: the right-hand price sits lower than its label.
-        return [
-            ReceiptTextPiece(text: "ITEM\(row) LONGNAME", topLeft: CGPoint(x: 0.1, y: y + 0.02),
-                             topRight: CGPoint(x: 0.4, y: y + 0.02 - 0.03), bottomLeft: CGPoint(x: 0.1, y: y)),
-            ReceiptTextPiece(text: "\(row).99", topLeft: CGPoint(x: 0.7, y: y - 0.06 + 0.02),
-                             topRight: CGPoint(x: 0.8, y: y - 0.06 + 0.02 - 0.01), bottomLeft: CGPoint(x: 0.7, y: y - 0.06))
-        ]
-    })
-    try check(slope.count == 8 && slope.allSatisfy { $0.contains("ITEM") && $0.contains(".99") },
-              "Tilt must be compensated: \(slope)")
-
     let ok = try ReceiptTextParser.parse("""
     CORNER MARKET
     11/10/2026
@@ -71,9 +47,6 @@ func runReceiptIntakeChecks() throws {
     try check(missingTotal.checks.total == .low, "A missing total is low confidence")
     try check(ok.checks.score > misread.checks.score && misread.checks.score > missingTotal.checks.score,
               "Scores must rank clean readings above doubtful ones")
-    let blurry = try ReceiptTextParser.parse("SHOP\nTOTAL 5.00", textConfidence: 0.4)
-    try check(blurry.checks.problems.contains { $0.contains("清晰度") }, "Blurry text must be reported")
-
     let walmart = try ReceiptTextParser.parse("""
     Give us feedback @ survey.walmart.com
     Thank you! ID #: 7QDD9S15SK2

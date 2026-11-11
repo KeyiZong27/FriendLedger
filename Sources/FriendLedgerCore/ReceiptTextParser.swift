@@ -1,10 +1,7 @@
 import Foundation
 
 public enum ReceiptTextParser {
-    public static func parse(
-        _ text: String, imageFingerprint: String? = nil, textConfidence: Double? = nil,
-        interpretation: ReceiptInterpretation? = nil
-    ) throws -> ReceiptDraft {
+    public static func parse(_ text: String, imageFingerprint: String? = nil) throws -> ReceiptDraft {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw FinanceError.invalidField("收据识别文本，未发现可识别内容")
         }
@@ -73,19 +70,7 @@ public enum ReceiptTextParser {
                 items.append(ReceiptItem(name: name, lineTotalCents: amount))
             }
         }
-        var merchant = pickMerchant(candidateRows)
-        var usedModel = false
-        var disputedTotal = false
-        if let interpretation {
-            let outcome = ReceiptHints.apply(
-                interpretation, text: text, printed: printedAmounts(in: text), merchant: merchant,
-                totals: &totals, subtotals: &subtotals, taxes: &taxes, tenders: &tenders
-            )
-            merchant = outcome.merchant
-            usedModel = outcome.usedModel
-            disputedTotal = outcome.disputedTotal
-            warnings.append(contentsOf: outcome.notes)
-        }
+        let merchant = pickMerchant(candidateRows)
         if totals.isEmpty { warnings.append("未找到明确的 TOTAL / AMOUNT DUE，请手动输入总额。") }
         if Set(totals.map(\.amountCents)).count > 1 {
             warnings.append("发现多个不同总额，不能自动选择；请核对最终支付金额及小费。")
@@ -98,29 +83,14 @@ public enum ReceiptTextParser {
         let singleDay = days.count == 1 ? days.first : nil
         let checks = makeChecks(
             merchant: merchant, items: items, tax: singleTax, totals: totals, subtotals: subtotals,
-            tenders: tenders, day: singleDay, textConfidence: textConfidence, disputedTotal: disputedTotal
+            tenders: tenders, day: singleDay
         )
         return ReceiptDraft(
             imageFingerprint: imageFingerprint, rawText: text, suggestedMerchantName: merchant,
             totalCandidates: totals, suggestedItems: items,
             suggestedTaxCents: singleTax, warnings: warnings,
-            suggestedDay: singleDay, checks: checks, textConfidence: textConfidence,
-            usedOnDeviceModel: usedModel
+            suggestedDay: singleDay, checks: checks
         )
-    }
-
-    private static func printedAmounts(in text: String) -> Set<Int64> {
-        guard let pattern = try? NSRegularExpression(
-            pattern: #"(?<![\d.\-])(?:\$\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})(?![\d.])"#
-        ) else { return [] }
-        var amounts: Set<Int64> = []
-        for match in pattern.matches(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)) {
-            if let range = Range(match.range(at: 1), in: text),
-               let cents = try? Money.parseNonnegative(String(text[range]).replacingOccurrences(of: ",", with: "")) {
-                amounts.insert(cents)
-            }
-        }
-        return amounts
     }
 
     private static func money(_ cents: Int64) -> String {
@@ -131,13 +101,12 @@ public enum ReceiptTextParser {
     /// at the same total on a correctly read receipt, and rarely agree by accident on a misread one.
     private static func makeChecks(
         merchant: String?, items: [ReceiptItem], tax: Int64?, totals: [ReceiptTotalCandidate],
-        subtotals: [Int64], tenders: [Int64], day: ReceiptDay?, textConfidence: Double?, disputedTotal: Bool = false
+        subtotals: [Int64], tenders: [Int64], day: ReceiptDay?
     ) -> ReceiptChecks {
         var confirmations: [String] = []
         var problems: [String] = []
         let amounts = Set(totals.map(\.amountCents))
         var total = ReceiptConfidence.low
-        if disputedTotal { problems.append("规则与大模型读出的总额不同，且都未通过核对，请对照小票") }
         if amounts.count == 1, let value = amounts.first {
             total = .medium
             if tenders.contains(value) {
@@ -158,7 +127,6 @@ public enum ReceiptTextParser {
                 if total != .high { total = .low }
             }
             if total == .medium { problems.append("总额没有被其他金额验证，请对照小票核对") }
-            if disputedTotal { total = .low }
         } else if amounts.count > 1 {
             problems.append("发现多个不同总额，请选择最终支付金额")
         } else {
@@ -177,9 +145,6 @@ public enum ReceiptTextParser {
             merchantLevel = MerchantTypeClassifier.suggest(merchantName: merchant, allowFuzzy: false) != nil ? .high : .medium
         } else {
             problems.append("未识别到商店名称")
-        }
-        if let textConfidence, textConfidence < 0.6 {
-            problems.append("照片文字清晰度较低（约 \(Int(textConfidence * 100))%），建议重拍或逐项核对")
         }
         let dateLevel: ReceiptConfidence = day == nil ? .low : .high
         var score = total == .high ? 50 : total == .medium ? 25 : 0

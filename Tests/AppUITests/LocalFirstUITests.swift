@@ -32,7 +32,6 @@ final class LocalFirstUITests: XCTestCase {
 
     private func addEntry(in app: XCUIApplication, note: String) {
         app.buttons["new-entry"].tap()
-        app.buttons["add-manual"].tap()
         let amount = app.textFields["entry-amount"]
         XCTAssertTrue(amount.waitForExistence(timeout: 5))
         amount.tap()
@@ -88,51 +87,11 @@ final class LocalFirstUITests: XCTestCase {
         app.terminate()
     }
 
-    private func scanTestReceipt(in app: XCUIApplication) {
-        app.buttons["new-entry"].tap()
-        XCTAssertTrue(app.buttons["add-camera"].exists)
-        XCTAssertTrue(app.buttons["add-library"].exists)
-        app.buttons["add-test-receipt"].tap()
-    }
-
-    func testReceiptPhotoRecognizesStoreAndCategorizesAutomatically() {
-        let app = makeApp()
-        app.launch()
-        completeSetup(in: app)
-        scanTestReceipt(in: app)
-        let merchant = app.textFields["receipt-merchant"]
-        XCTAssertTrue(merchant.waitForExistence(timeout: 40), "Vision must read the store from the photo")
-        XCTAssertTrue(((merchant.value as? String) ?? "").uppercased().contains("TRADER"))
-        XCTAssertEqual(app.textFields["receipt-amount"].value as? String, "7.56")
-        let type = app.descendants(matching: .any)["receipt-type"].firstMatch
-        XCTAssertTrue(type.label.contains("超市"), "Store type must be chosen automatically, got \(type.label)")
-        XCTAssertTrue(app.staticTexts["receipt-type-hint"].label.contains("自动判断"))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "小计 + 税 = 总额")).firstMatch.exists,
-                      "The automatic cross-check must confirm subtotal + tax = total")
-        app.buttons["save-receipt"].tap()
-        let total = app.staticTexts["expense-total"]
-        XCTAssertTrue(total.waitForExistence(timeout: 10))
-        XCTAssertEqual(total.label, "$7.56")
-        XCTAssertTrue(app.staticTexts["超市 · Tester"].exists, "Saved receipt must show the automatic type and member")
-
-        scanTestReceipt(in: app)
-        XCTAssertTrue(app.textFields["receipt-merchant"].waitForExistence(timeout: 40))
-        XCTAssertTrue(app.staticTexts["receipt-type-hint"].label.contains("已记住"),
-                      "A remembered store must reuse its type without asking again")
-        app.buttons["save-receipt"].tap()
-        XCTAssertTrue(app.staticTexts["receipt-error"].waitForExistence(timeout: 5), "The same photo must not be recorded twice")
-        XCTAssertEqual(app.staticTexts["receipt-error"].label, "这张收据已经入账，不能重复添加。")
-        app.buttons["取消"].tap()
-        XCTAssertEqual(app.staticTexts["expense-total"].label, "$7.56")
-        app.terminate()
-    }
-
     func testManualEntryCategoryIsAutomatic() {
         let app = makeApp()
         app.launch()
         completeSetup(in: app)
         app.buttons["new-entry"].tap()
-        app.buttons["add-manual"].tap()
         XCTAssertFalse(app.buttons["分类"].exists, "Category must not be a manual choice")
         let amount = app.textFields["entry-amount"]
         XCTAssertTrue(amount.waitForExistence(timeout: 5))
