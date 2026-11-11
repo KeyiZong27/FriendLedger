@@ -23,7 +23,7 @@ func receiptImage(orientation: CGImagePropertyOrientation = .up) throws -> Data 
     }
     let font = CTFontCreateWithName("Helvetica" as CFString, 48, nil)
     for (index, line) in [
-        "CORNER MARKET", "MILK 4.00", "BREAD 3.00",
+        "CORNER MARKET", "11/10/2026", "MILK 4.00", "BREAD 3.00",
         "SUBTOTAL 7.00", "TAX 0.56", "TOTAL 7.56"
     ].enumerated() {
         let attributes: [NSAttributedString.Key: Any] = [
@@ -49,7 +49,8 @@ let imageData = try receiptImage()
 let draft = try await LocalReceiptRecognizer.recognize(imageData: imageData)
 guard draft.suggestedTotalCents == 756, draft.suggestedTaxCents == 56,
       draft.suggestedMerchantName == "CORNER MARKET",
-      draft.suggestedItems.count == 2, draft.imageFingerprint?.count == 64 else {
+      draft.suggestedItems.count == 2, draft.imageFingerprint?.count == 64,
+      draft.suggestedDay == ReceiptDay(year: 2026, month: 11, day: 10) else {
     throw OCRCheckError.recognition("Synthetic receipt did not produce the expected structured draft: \(draft.rawText)")
 }
 let repeated = try await LocalReceiptRecognizer.recognize(imageData: imageData)

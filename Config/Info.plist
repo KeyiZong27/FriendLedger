@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>朋友账本</string>
+    <string>家庭账本</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -24,6 +24,8 @@
     <true/>
     <key>WalletImportEnabled</key>
     <false/>
+    <key>NSCameraUsageDescription</key>
+    <string>拍摄收据，在手机本机识别商店、日期和金额。照片不会上传。</string>
     <key>NSFinancialDataUsageDescription</key>
     <string>读取你授权的 Wallet 交易，与家庭账本核对并补记遗漏。仅共享到你选择的家庭 iCloud 账本。</string>
     <key>LSRequiresIPhoneOS</key>

@@ -89,6 +89,18 @@ public struct ReceiptTotalCandidate: Codable, Equatable, Sendable {
     }
 }
 
+public struct ReceiptDay: Codable, Equatable, Sendable {
+    public let year: Int
+    public let month: Int
+    public let day: Int
+
+    public init(year: Int, month: Int, day: Int) {
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+}
+
 public struct ReceiptDraft: Identifiable, Sendable {
     public let id: String
     public let imageFingerprint: String?
@@ -98,6 +110,7 @@ public struct ReceiptDraft: Identifiable, Sendable {
     public let suggestedItems: [ReceiptItem]
     public let suggestedTaxCents: Int64?
     public let warnings: [String]
+    public let suggestedDay: ReceiptDay?
 
     public var suggestedTotalCents: Int64? {
         let amounts = Set(totalCandidates.map(\.amountCents))
@@ -107,7 +120,8 @@ public struct ReceiptDraft: Identifiable, Sendable {
     public init(
         id: String = UUID().uuidString, imageFingerprint: String? = nil, rawText: String,
         suggestedMerchantName: String?, totalCandidates: [ReceiptTotalCandidate],
-        suggestedItems: [ReceiptItem], suggestedTaxCents: Int64?, warnings: [String]
+        suggestedItems: [ReceiptItem], suggestedTaxCents: Int64?, warnings: [String],
+        suggestedDay: ReceiptDay? = nil
     ) {
         self.id = id
         self.imageFingerprint = imageFingerprint
@@ -117,6 +131,7 @@ public struct ReceiptDraft: Identifiable, Sendable {
         self.suggestedItems = suggestedItems
         self.suggestedTaxCents = suggestedTaxCents
         self.warnings = warnings
+        self.suggestedDay = suggestedDay
     }
 }
 

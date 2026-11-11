@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @ObservedObject var store: LedgerStore
@@ -6,6 +8,11 @@ struct ContentView: View {
     @State private var selectedID: String?
     @State private var showingSettings = false
     @State private var showingNewEntry = false
+    @State private var showingCamera = false
+    @State private var showingLibrary = false
+    @State private var libraryItem: PhotosPickerItem?
+    @State private var capturedPhoto: Data?
+    @State private var receiptImage: ReceiptImageItem?
     @State private var entryToDelete: LedgerEntry?
 
     private var selected: StoredLedger? {
@@ -105,11 +112,47 @@ struct ContentView: View {
                         .accessibilityIdentifier("settings-button")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("记一笔", systemImage: "plus") { showingNewEntry = true }
+                    Menu {
+                        Button("拍照记账", systemImage: "camera") { showingCamera = true }
+                            .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                            .accessibilityIdentifier("add-camera")
+                        Button("从相册选择", systemImage: "photo.on.rectangle") { showingLibrary = true }
+                            .accessibilityIdentifier("add-library")
+                        Button("手动输入", systemImage: "square.and.pencil") { showingNewEntry = true }
+                            .accessibilityIdentifier("add-manual")
+                        #if DEBUG
+                        if LedgerStore.isUITestProfile {
+                            Button("使用测试收据图片") {
+                                receiptImage = ReceiptImageItem(source: .data(SampleReceipt.pngData()))
+                            }
+                            .accessibilityIdentifier("add-test-receipt")
+                        }
+                        #endif
+                    } label: { Image(systemName: "plus") }
                         .disabled(selected == nil || !store.storageReady
                                   || (selected?.ledger.isOwner == false && selected?.isAvailable == false))
+                        .accessibilityLabel("记一笔")
                         .accessibilityIdentifier("new-entry")
                 }
+            }
+            .photosPicker(isPresented: $showingLibrary, selection: $libraryItem, matching: .images)
+            .onChange(of: libraryItem) { _, item in
+                guard let item else { return }
+                receiptImage = ReceiptImageItem(source: .library(item))
+                libraryItem = nil
+            }
+            .fullScreenCover(isPresented: $showingCamera, onDismiss: {
+                if let data = capturedPhoto {
+                    receiptImage = ReceiptImageItem(source: .data(data))
+                    capturedPhoto = nil
+                }
+            }) {
+                CameraPicker(onImage: { capturedPhoto = $0; showingCamera = false },
+                             onCancel: { showingCamera = false })
+                    .ignoresSafeArea()
+            }
+            .sheet(item: $receiptImage) { item in
+                if let selected { ReceiptReviewView(store: store, recordID: selected.id, image: item) }
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(store: store, selectedID: $selectedID)
@@ -321,16 +364,21 @@ struct NewEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var amount = ""
     @State private var kind = EntryKind.expense
-    @State private var category = "餐饮"
     @State private var note = ""
     @State private var date = Date()
     @State private var validationError: String?
     @State private var pendingID = UUID().uuidString
-    private let categories = ["餐饮", "交通", "购物", "住宿", "娱乐", "工资", "其他"]
 
     init(store: LedgerStore, selected: StoredLedger) {
         self.store = store
         self.selected = selected
+    }
+
+    private var autoCategory: String {
+        if kind == .income { return MerchantTypeClassifier.incomeType }
+        let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let known = store.record(id: selected.id)?.book.merchant(matching: text) { return known.businessType }
+        return MerchantTypeClassifier.suggest(merchantName: text) ?? "其他"
     }
 
     var body: some View {
@@ -342,15 +390,12 @@ struct NewEntryView: View {
                     }.pickerStyle(.segmented)
                     TextField("金额（美元）", text: $amount).keyboardType(.decimalPad)
                         .accessibilityIdentifier("entry-amount")
-                    Picker("分类", selection: $category) {
-                        ForEach(categories, id: \.self) { Text($0).tag($0) }
-                    }
-                    TextField("备注（选填）", text: $note).accessibilityIdentifier("entry-note")
+                    TextField("商店或备注（选填）", text: $note).accessibilityIdentifier("entry-note")
                     DatePicker("日期", selection: $date, displayedComponents: .date)
                 } header: {
                     Text(selected.ledger.name)
                 } footer: {
-                    Text("将以“\(store.nickname)”记录，先保存在本地。")
+                    Text("分类自动设为“\(autoCategory)”；以“\(store.nickname)”记录，先保存在本地。")
                 }
                 if let error = validationError ?? store.errorMessage {
                     Text(error).font(.footnote).foregroundStyle(.red)
@@ -376,7 +421,7 @@ struct NewEntryView: View {
             }
             validationError = nil
             let entry = LedgerEntry(
-                id: pendingID, amountCents: cents, kind: kind, category: category,
+                id: pendingID, amountCents: cents, kind: kind, category: autoCategory,
                 note: note.trimmingCharacters(in: .whitespacesAndNewlines), author: store.nickname, date: date
             )
             Task {

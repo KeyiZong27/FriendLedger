@@ -63,10 +63,54 @@ public enum ReceiptTextParser {
             warnings.append("发现多个不同总额，不能自动选择；请核对最终支付金额及小费。")
         }
         if taxes.count > 1 { warnings.append("发现多条税额，请核对合计税额。") }
+        let days = receiptDays(in: text)
+        if days.count > 1 { warnings.append("发现多个不同日期，未自动选择，请手动确认消费日期。") }
+        if days.isEmpty { warnings.append("未识别到消费日期，默认使用今天，请核对。") }
         return ReceiptDraft(
             imageFingerprint: imageFingerprint, rawText: text, suggestedMerchantName: merchant,
             totalCandidates: totals, suggestedItems: items,
-            suggestedTaxCents: taxes.count == 1 ? taxes.first : nil, warnings: warnings
+            suggestedTaxCents: taxes.count == 1 ? taxes.first : nil, warnings: warnings,
+            suggestedDay: days.count == 1 ? days.first : nil
         )
+    }
+
+    private static func receiptDays(in text: String) -> [ReceiptDay] {
+        let months = ["jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+                      "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12]
+        let patterns: [(String, ([String]) -> (Int, Int, Int)?)] = [
+            (#"(?<![\d/])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d/])"#, { g in
+                guard let y = Int(g[0]), let m = Int(g[1]), let d = Int(g[2]) else { return nil }
+                return (y, m, d)
+            }),
+            (#"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})(?![\d/])"#, { g in
+                guard let m = Int(g[0]), let d = Int(g[1]), var y = Int(g[2]) else { return nil }
+                if g[2].count == 2 { y += 2000 }
+                return (y, m, d)
+            }),
+            (#"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b"#, { g in
+                guard let m = months[g[0].lowercased()], let d = Int(g[1]), let y = Int(g[2]) else { return nil }
+                return (y, m, d)
+            })
+        ]
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        var found: [ReceiptDay] = []
+        for (pattern, convert) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            for match in regex.matches(in: text, range: range) {
+                let groups = (1..<match.numberOfRanges).compactMap { index in
+                    Range(match.range(at: index), in: text).map { String(text[$0]) }
+                }
+                guard groups.count == match.numberOfRanges - 1, let (y, m, d) = convert(groups),
+                      (2000...2100).contains(y),
+                      let date = calendar.date(from: DateComponents(year: y, month: m, day: d)),
+                      calendar.dateComponents([.year, .month, .day], from: date) ==
+                        DateComponents(year: y, month: m, day: d) else { continue }
+                let day = ReceiptDay(year: y, month: m, day: d)
+                if !found.contains(day) { found.append(day) }
+            }
+        }
+        return found
     }
 }

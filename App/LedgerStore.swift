@@ -137,6 +137,40 @@ final class LedgerStore: ObservableObject {
         mutate(recordID) { try $0.addManualEntry(entry) }
     }
 
+    enum ReceiptSaveOutcome {
+        case saved
+        case possibleDuplicate
+        case failed(String)
+    }
+
+    /// Saves the merchant and the single expense together, or neither.
+    func saveReceipt(_ draft: ReceiptDraft, _ submission: ReceiptSubmission, recordID: String) -> ReceiptSaveOutcome {
+        isMutating = true
+        defer { isMutating = false }
+        do {
+            var next = snapshot
+            try next.records[try index(recordID, in: next)].edit {
+                try $0.submitReceipt(draft, submission, calendar: .current)
+            }
+            try commit(next)
+            errorMessage = nil
+            scheduleSync()
+            return .saved
+        } catch FinanceError.possibleDuplicateReceipt {
+            return .possibleDuplicate
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static var isUITestProfile: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["LEDGER_TEST_CACHE_ID"].flatMap(UUID.init(uuidString:)) != nil
+        #else
+        return false
+        #endif
+    }
+
     func deleteEntry(_ entry: LedgerEntry, recordID: String) async {
         _ = mutate(recordID) { try $0.removeEntry(id: entry.id) }
     }
