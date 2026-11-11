@@ -29,7 +29,48 @@ public enum CaptureOutcome: Equatable, Sendable {
     case duplicate
 }
 
+public enum CategorySource: Equatable, Sendable {
+    case remembered, guessed, unknown
+}
+
 extension HouseholdBook {
+    /// Adds a typed-in expense and remembers its store: the next entry with this name (or alias) gets the
+    /// same category. Everything happens together or not at all; earlier entries keep their category.
+    public mutating func addEntryRememberingStore(_ entry: LedgerEntry) throws {
+        try addManualEntry(entry)
+        guard entry.kind == .expense else { return }
+        let name = entry.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let type = entry.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !MerchantProfile.key(name).isEmpty, name.count <= 100, type.count <= 100 else { return }
+        if let existing = self.merchant(matching: name) {
+            guard existing.businessType != type else { return }
+            try saveMerchant(MerchantProfile(
+                id: existing.id, name: existing.name, businessType: type,
+                aliases: existing.aliases, address: existing.address
+            ))
+        } else {
+            try saveMerchant(MerchantProfile(name: name, businessType: type))
+        }
+    }
+
+    /// The category a typed-in expense would get without any choice by the person.
+    public func suggestedCategory(forStore text: String) -> (category: String, source: CategorySource) {
+        let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let known = merchant(matching: name) { return (known.businessType, .remembered) }
+        if let guess = MerchantTypeClassifier.suggest(merchantName: name) { return (guess, .guessed) }
+        return ("其他", .unknown)
+    }
+
+    /// Standard types first, then any custom ones already used in this book.
+    public var knownCategories: [String] {
+        var result = MerchantTypeClassifier.types
+        for name in merchants.map(\.businessType) + entries.map(\.category)
+        where name != MerchantTypeClassifier.incomeType && !result.contains(name) {
+            result.append(name)
+        }
+        return result
+    }
+
     /// Records one automatic expense. The same payment reported twice within `duplicateWindow` seconds
     /// (a trigger that fires again, or both a Wallet and an alert path) is skipped instead of counted twice.
     @discardableResult

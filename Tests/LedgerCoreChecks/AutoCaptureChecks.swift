@@ -41,4 +41,38 @@ func runAutoCaptureChecks() throws {
     try check(rejected, "A zero amount must be refused")
     let total = LedgerTotals(entries: book.entries)
     try check(total.expenseCents == 450 + 450 + 451 + 1000 + 1100 + 1200, "Automatic expenses count in totals")
+
+    // Typed-in entries: the person can change the suggested category and the app remembers the store.
+    func typed(_ id: String, _ cents: Int64, _ category: String, _ note: String, kind: EntryKind = .expense) -> LedgerEntry {
+        LedgerEntry(id: id, amountCents: cents, kind: kind, category: category, note: note, author: "测试", date: now)
+    }
+    var memory = HouseholdBook()
+    try check(memory.suggestedCategory(forStore: "Starbucks") == ("咖啡", .guessed), "Known brands are guessed")
+    try check(memory.suggestedCategory(forStore: "Zed Shop") == ("其他", .unknown), "Unknown stores are unknown")
+    try check(memory.suggestedCategory(forStore: "") == ("其他", .unknown), "No store name means no guess")
+    try memory.addEntryRememberingStore(typed("m1", 1000, "购物", "Zed Shop"))
+    try check(memory.suggestedCategory(forStore: "  zed   SHOP ") == ("购物", .remembered), "A corrected category is remembered")
+    try check(memory.merchants.count == 1, "One store is remembered once")
+    try memory.addEntryRememberingStore(typed("m2", 500, "娱乐", "ZED shop"))
+    try check(memory.merchants.count == 1 && memory.suggestedCategory(forStore: "Zed Shop") == ("娱乐", .remembered),
+              "Changing the category again replaces the memory, without a duplicate store")
+    try check(memory.entries.first { $0.id == "m1" }?.category == "购物", "Earlier entries keep their category")
+    try memory.addEntryRememberingStore(typed("m3", 450, "购物", "Starbucks"))
+    try check(memory.suggestedCategory(forStore: "Starbucks") == ("购物", .remembered), "A memory beats the keyword guess")
+    try memory.addEntryRememberingStore(typed("m4", 700, "其他", ""))
+    try memory.addEntryRememberingStore(typed("m5", 90_000, MerchantTypeClassifier.incomeType, "Paycheck", kind: .income))
+    try check(memory.merchants.count == 2, "Entries without a store, and income, are not remembered")
+    try memory.addEntryRememberingStore(typed("m6", 800, "宠物", "Happy Paws"))
+    try check(memory.knownCategories.contains("宠物") && memory.knownCategories.first == "餐饮"
+              && !memory.knownCategories.contains(MerchantTypeClassifier.incomeType),
+              "Custom categories are offered next time, income is not a spending category")
+    let roundTrip = try HouseholdBook.decode(memory.encoded())
+    try check(roundTrip.suggestedCategory(forStore: "happy paws") == ("宠物", .remembered), "Memory survives saving and loading")
+    var captured = roundTrip
+    try check(try captured.recordCapturedPurchase(amountCents: 999, merchant: "zed shop", date: now.addingTimeInterval(9999), author: "测试")
+              == .recorded(category: "娱乐"), "Automatic capture uses the remembered category")
+    var failing = memory
+    var rejectedEntry = false
+    do { try failing.addEntryRememberingStore(typed("m7", 0, "购物", "Bad")) } catch { rejectedEntry = true }
+    try check(rejectedEntry && failing.merchants.count == memory.merchants.count, "A rejected entry remembers nothing")
 }

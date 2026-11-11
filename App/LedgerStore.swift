@@ -134,7 +134,7 @@ final class LedgerStore: ObservableObject {
     }
 
     func addEntry(_ entry: LedgerEntry, recordID: String) async -> Bool {
-        mutate(recordID) { try $0.addManualEntry(entry) }
+        mutate(recordID) { try $0.addEntryRememberingStore(entry) }
     }
 
     enum CaptureResult: Equatable {

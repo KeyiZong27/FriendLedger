@@ -87,22 +87,55 @@ final class LocalFirstUITests: XCTestCase {
         app.terminate()
     }
 
-    func testManualEntryCategoryIsAutomatic() {
+    func testManualEntryShowsEditableCategoryAndRemembersIt() {
         let app = makeApp()
         app.launch()
         completeSetup(in: app)
-        app.buttons["new-entry"].tap()
-        XCTAssertFalse(app.buttons["分类"].exists, "Category must not be a manual choice")
-        let amount = app.textFields["entry-amount"]
-        XCTAssertTrue(amount.waitForExistence(timeout: 5))
-        amount.tap()
-        amount.typeText("4.50")
-        let memo = app.textFields["entry-note"]
-        memo.tap()
-        memo.typeText("Starbucks")
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "分类自动设为“咖啡”")).firstMatch.exists)
+
+        func openForm(store: String, amount: String) {
+            app.buttons["new-entry"].tap()
+            let field = app.textFields["entry-amount"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap()
+            field.typeText(amount)
+            let memo = app.textFields["entry-note"]
+            memo.tap()
+            memo.typeText(store)
+        }
+        func hint() -> String { app.staticTexts["entry-category-hint"].label }
+
+        // A known brand is guessed and shown below the fields.
+        openForm(store: "Starbucks", amount: "4.50")
+        let picker = app.descendants(matching: .any)["entry-category"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(picker.label.contains("咖啡"), "The suggested category must be visible: \(picker.label)")
+        XCTAssertTrue(hint().contains("自动判断"), hint())
         app.buttons["save-entry"].tap()
         XCTAssertTrue(app.staticTexts["咖啡 · Tester"].waitForExistence(timeout: 5))
+
+        // An unknown store is put under 其他 until the person chooses; the choice is saved with the entry.
+        openForm(store: "Zed Shop", amount: "10.00")
+        XCTAssertTrue(app.descendants(matching: .any)["entry-category"].firstMatch.label.contains("其他"))
+        XCTAssertTrue(hint().contains("没能判断"), hint())
+        app.descendants(matching: .any)["entry-category"].firstMatch.tap()
+        app.buttons["购物"].tap()
+        XCTAssertTrue(hint().contains("保存后会记住"), hint())
+        app.buttons["save-entry"].tap()
+        XCTAssertTrue(app.staticTexts["购物 · Tester"].waitForExistence(timeout: 5))
+
+        // The same store, even typed differently, now comes with the remembered category.
+        openForm(store: "zed shop", amount: "3.00")
+        XCTAssertTrue(app.descendants(matching: .any)["entry-category"].firstMatch.label.contains("购物"))
+        XCTAssertTrue(hint().contains("已记住"), hint())
+        app.buttons["取消"].tap()
+
+        // The memory survives a restart.
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["new-entry"].waitForExistence(timeout: 10))
+        openForm(store: "Zed Shop", amount: "1.00")
+        XCTAssertTrue(app.descendants(matching: .any)["entry-category"].firstMatch.label.contains("购物"))
+        XCTAssertTrue(hint().contains("已记住"), hint())
         app.terminate()
     }
 

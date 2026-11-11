@@ -352,17 +352,40 @@ struct NewEntryView: View {
     @State private var date = Date()
     @State private var validationError: String?
     @State private var pendingID = UUID().uuidString
+    @State private var chosen: String?
+    @State private var customMode = false
+    @State private var customText = ""
 
     init(store: LedgerStore, selected: StoredLedger) {
         self.store = store
         self.selected = selected
     }
 
-    private var autoCategory: String {
+    private static let customTag = "__new_category__"
+
+    private var book: HouseholdBook { store.record(id: selected.id)?.book ?? HouseholdBook() }
+    private var storeName: String { note.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var suggestion: (category: String, source: CategorySource) {
+        book.suggestedCategory(forStore: storeName)
+    }
+
+    private var category: String {
         if kind == .income { return MerchantTypeClassifier.incomeType }
-        let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let known = store.record(id: selected.id)?.book.merchant(matching: text) { return known.businessType }
-        return MerchantTypeClassifier.suggest(merchantName: text) ?? "其他"
+        if customMode { return customText.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return chosen ?? suggestion.category
+    }
+
+    private var categoryHint: String {
+        if storeName.isEmpty { return "填写商店名后会自动判断分类；没有商店名时不会记忆。" }
+        if customMode || chosen != nil {
+            return "保存后会记住：以后“\(storeName)”都归为“\(category.isEmpty ? "…" : category)”。"
+        }
+        switch suggestion.source {
+        case .remembered: return "已记住这家店，自动使用你之前选的分类。不对可以修改，会更新记忆。"
+        case .guessed: return "系统自动判断的分类，不对请修改；保存后会记住。"
+        case .unknown: return "没能判断，已先放进“其他”；请选一个分类，保存后会记住。"
+        }
     }
 
     var body: some View {
@@ -375,11 +398,42 @@ struct NewEntryView: View {
                     TextField("金额（美元）", text: $amount).keyboardType(.decimalPad)
                         .accessibilityIdentifier("entry-amount")
                     TextField("商店或备注（选填）", text: $note).accessibilityIdentifier("entry-note")
+                        .onChange(of: note) { _, _ in
+                            // A different store name means a different decision.
+                            chosen = nil
+                            customMode = false
+                        }
                     DatePicker("日期", selection: $date, displayedComponents: .date)
                 } header: {
                     Text(selected.ledger.name)
+                }
+                Section {
+                    if kind == .income {
+                        LabeledContent("分类", value: MerchantTypeClassifier.incomeType)
+                            .accessibilityIdentifier("entry-category")
+                    } else {
+                        Picker("分类", selection: Binding(
+                            get: { customMode ? Self.customTag : category },
+                            set: { value in
+                                if value == Self.customTag { customMode = true; chosen = nil }
+                                else { customMode = false; chosen = value }
+                            }
+                        )) {
+                            ForEach(book.knownCategories, id: \.self) { Text($0).tag($0) }
+                            Text("新分类…").tag(Self.customTag)
+                        }
+                        .accessibilityIdentifier("entry-category")
+                        if customMode {
+                            TextField("新分类名称", text: $customText)
+                                .accessibilityIdentifier("entry-category-custom")
+                        }
+                    }
+                } header: {
+                    Text("分类")
                 } footer: {
-                    Text("分类自动设为“\(autoCategory)”；以“\(store.nickname)”记录，先保存在本地。")
+                    Text(kind == .income ? "以“\(store.nickname)”记录，先保存在本地。"
+                         : categoryHint + "\n以“\(store.nickname)”记录，先保存在本地。")
+                        .accessibilityIdentifier("entry-category-hint")
                 }
                 if let error = validationError ?? store.errorMessage {
                     Text(error).font(.footnote).foregroundStyle(.red)
@@ -403,9 +457,13 @@ struct NewEntryView: View {
                 validationError = "备注最多 200 字。"
                 return
             }
+            guard !category.isEmpty, category.count <= 30 else {
+                validationError = "请填写 1–30 字的分类名称。"
+                return
+            }
             validationError = nil
             let entry = LedgerEntry(
-                id: pendingID, amountCents: cents, kind: kind, category: autoCategory,
+                id: pendingID, amountCents: cents, kind: kind, category: category,
                 note: note.trimmingCharacters(in: .whitespacesAndNewlines), author: store.nickname, date: date
             )
             Task {
