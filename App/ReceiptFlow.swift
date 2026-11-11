@@ -118,6 +118,11 @@ struct ReceiptReviewView: View {
                 Section { Text(message).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("receipt-error") }
             }
             let problems = draft.checks.problems
+            if draft.usedOnDeviceModel {
+                Label("已用手机本机大模型辅助整理；所有数字仍需与小票核对", systemImage: "sparkles")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("receipt-model-used")
+            }
             if !draft.checks.confirmations.isEmpty || !problems.isEmpty {
                 Section {
                     ForEach(draft.checks.confirmations, id: \.self) {
@@ -236,7 +241,7 @@ struct ReceiptReviewView: View {
                 pages = [bytes]
             }
             phase = .working("正在优化图片并在本机识别…")
-            let draft = try await LocalReceiptRecognizer.recognize(pages: pages)
+            let draft = try await LocalReceiptRecognizer.recognize(pages: pages, interpreter: store.receiptInterpreter())
             merchantName = draft.suggestedMerchantName ?? ""
             if let cents = draft.suggestedTotalCents { amountText = Self.plain(cents) }
             if let day = draft.suggestedDay,

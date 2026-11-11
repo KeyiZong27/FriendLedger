@@ -20,7 +20,28 @@ final class LedgerStore: ObservableObject {
     var cloudEnabled: Bool { snapshot.discoveryAccountID != nil }
     var selectedCloudAccountID: String? { snapshot.discoveryAccountID }
     @Published private(set) var nickname = ""
+    @Published private(set) var useOnDeviceModel = false
     var needsSetup: Bool { storageReady && nickname.isEmpty }
+
+    /// Apple's on-device model needs a recent iPhone with Apple Intelligence enabled in a supported region.
+    static var onDeviceModelAvailable: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) { return AppleReceiptInterpreter.makeIfAvailable() != nil }
+        #endif
+        return false
+    }
+
+    func setUseOnDeviceModel(_ enabled: Bool) {
+        preferences.set(enabled, forKey: "useOnDeviceModel")
+        useOnDeviceModel = enabled
+    }
+
+    func receiptInterpreter() -> (any ReceiptTextInterpreter)? {
+        #if canImport(FoundationModels)
+        if useOnDeviceModel, #available(iOS 26.0, *) { return AppleReceiptInterpreter.makeIfAvailable() }
+        #endif
+        return nil
+    }
     private let cache: LocalLedgerCache?
     private let preferences: UserDefaults
     private let cloud: any LedgerCloudClient
@@ -36,6 +57,7 @@ final class LedgerStore: ObservableObject {
         self.cloud = cloud
         self.preferences = preferences
         nickname = preferences.string(forKey: "memberNickname") ?? ""
+        useOnDeviceModel = preferences.bool(forKey: "useOnDeviceModel")
         do {
             guard let cache else { throw FinanceError.invalidField("本地存储位置") }
             snapshot = try cache.load()

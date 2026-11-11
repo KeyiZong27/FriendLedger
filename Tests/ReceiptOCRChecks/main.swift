@@ -105,6 +105,23 @@ do {
 } catch FinanceError.invalidField(_) {}
 
 let draft = try await LocalReceiptRecognizer.recognize(imageData: imageData)
+
+struct BrokenInterpreter: ReceiptTextInterpreter {
+    func interpret(_ text: String) async throws -> ReceiptInterpretation { throw OCRCheckError.recognition("model down") }
+}
+struct InventingInterpreter: ReceiptTextInterpreter {
+    func interpret(_ text: String) async throws -> ReceiptInterpretation {
+        ReceiptInterpretation(merchantName: "Costco", totalCents: 123_456, taxCents: 999)
+    }
+}
+let fallback = try await LocalReceiptRecognizer.recognize(imageData: imageData, interpreter: BrokenInterpreter())
+guard fallback.suggestedTotalCents == 756, !fallback.usedOnDeviceModel else {
+    throw OCRCheckError.recognition("A failing model must fall back to the rules")
+}
+let ignored = try await LocalReceiptRecognizer.recognize(imageData: imageData, interpreter: InventingInterpreter())
+guard ignored.suggestedTotalCents == 756, ignored.suggestedMerchantName == "CORNER MARKET", !ignored.usedOnDeviceModel else {
+    throw OCRCheckError.recognition("Invented model values must be ignored: \(ignored.checks)")
+}
 guard draft.suggestedTotalCents == 756, draft.suggestedTaxCents == 56,
       draft.suggestedMerchantName == "CORNER MARKET",
       draft.suggestedItems.count == 2, draft.imageFingerprint?.count == 64,

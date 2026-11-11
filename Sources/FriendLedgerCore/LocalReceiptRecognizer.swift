@@ -11,26 +11,62 @@ public enum LocalReceiptRecognizer {
         let confidence: Double
     }
 
-    public static func recognize(imageData: Data) async throws -> ReceiptDraft {
-        try await recognize(pages: [imageData])
+    public static func recognize(
+        imageData: Data, interpreter: (any ReceiptTextInterpreter)? = nil
+    ) async throws -> ReceiptDraft {
+        try await recognize(pages: [imageData], interpreter: interpreter)
     }
 
     /// Long receipts can be scanned in several pages, in reading order, without overlap.
-    public static func recognize(pages: [Data]) async throws -> ReceiptDraft {
+    /// An optional interpreter (an on-device language model) may refine the rule-based reading; its answers
+    /// are used only where the printed text backs them up, and any failure falls back to the rules.
+    public static func recognize(
+        pages: [Data], interpreter: (any ReceiptTextInterpreter)? = nil
+    ) async throws -> ReceiptDraft {
         guard !pages.isEmpty, pages.count <= 6 else {
             throw FinanceError.invalidField("收据照片数量，一次最多 6 页")
         }
-        let worker = Task.detached(priority: .userInitiated) { try recognizeBlocking(pages) }
-        return try await withTaskCancellationHandler {
-            let draft = try await worker.value
+        let worker = Task.detached(priority: .userInitiated) { try readPages(pages) }
+        let reading = try await withTaskCancellationHandler {
+            let reading = try await worker.value
             try Task.checkCancellation()
-            return draft
+            return reading
         } onCancel: {
             worker.cancel()
         }
+        var hint: ReceiptInterpretation?
+        if let interpreter {
+            hint = try? await withTimeout(25) { try await interpreter.interpret(reading.text) }
+            try Task.checkCancellation()
+        }
+        return try ReceiptTextParser.parse(
+            reading.text, imageFingerprint: reading.fingerprint, textConfidence: reading.confidence,
+            interpretation: hint
+        )
     }
 
-    private static func recognizeBlocking(_ pages: [Data]) throws -> ReceiptDraft {
+    private static func withTimeout<T: Sendable>(
+        _ seconds: Double, _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw FinanceError.invalidField("本机大模型响应超时")
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw FinanceError.invalidField("本机大模型无响应") }
+            return first
+        }
+    }
+
+    private struct Reading {
+        let text: String
+        let confidence: Double?
+        let fingerprint: String
+    }
+
+    private static func readPages(_ pages: [Data]) throws -> Reading {
         var texts: [String] = []
         var weighted = 0.0
         var weight = 0.0
@@ -44,9 +80,9 @@ public enum LocalReceiptRecognizer {
         }
         let fingerprint = pages.count == 1 ? sha(pages[0])
             : sha(Data(pages.map(sha).joined().utf8))
-        return try ReceiptTextParser.parse(
-            texts.joined(separator: "\n"), imageFingerprint: fingerprint,
-            textConfidence: weight > 0 ? weighted / weight : nil
+        return Reading(
+            text: texts.joined(separator: "\n"), confidence: weight > 0 ? weighted / weight : nil,
+            fingerprint: fingerprint
         )
     }
 

@@ -312,6 +312,19 @@ struct SettingsView: View {
                         }
                     }
                 }
+                Section {
+                    Toggle("本机大模型辅助识别（实验性）", isOn: Binding(
+                        get: { store.useOnDeviceModel }, set: { store.setUseOnDeviceModel($0) }
+                    ))
+                    .disabled(!LedgerStore.onDeviceModelAvailable)
+                    .accessibilityIdentifier("settings-model-toggle")
+                } header: {
+                    Text("收据识别")
+                } footer: {
+                    Text(LedgerStore.onDeviceModelAvailable
+                         ? "使用 Apple 在手机上运行的模型帮助挑选商店和金额，不上传任何内容。它读出的数字只有在小票上确实印着、并通过付款金额 / 小计核对后才会采用。该设置只影响本机。"
+                         : "此设备不支持或未开启 Apple Intelligence（需要较新的 iPhone，且所在地区提供该功能），将只使用规则识别。")
+                }
                 Section("云端") {
                     Button("从当前 iCloud 加载账本", systemImage: "icloud.and.arrow.down") {
                         Task { await store.restoreFromCloud() }
