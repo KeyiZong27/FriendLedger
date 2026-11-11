@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var selectedID: String?
     @State private var showingSettings = false
     @State private var showingNewEntry = false
+    @State private var showingSpending = false
     @State private var entryToDelete: LedgerEntry?
 
     private var selected: StoredLedger? {
@@ -104,7 +105,10 @@ struct ContentView: View {
                     Button("设置", systemImage: "gearshape") { showingSettings = true }
                         .accessibilityIdentifier("settings-button")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("月度分析", systemImage: "chart.pie") { showingSpending = true }
+                        .disabled(selected == nil || !store.storageReady)
+                        .accessibilityIdentifier("analysis-button")
                     Button("记一笔", systemImage: "plus") { showingNewEntry = true }
                         .disabled(selected == nil || !store.storageReady
                                   || (selected?.ledger.isOwner == false && selected?.isAvailable == false))
@@ -116,6 +120,9 @@ struct ContentView: View {
             }
             .fullScreenCover(isPresented: Binding(get: { store.needsSetup }, set: { _ in })) {
                 SetupView(store: store)
+            }
+            .sheet(isPresented: $showingSpending) {
+                if let selected { SpendingView(store: store, recordID: selected.id) }
             }
             .sheet(isPresented: $showingNewEntry) {
                 if let selected { NewEntryView(store: store, selected: selected) }

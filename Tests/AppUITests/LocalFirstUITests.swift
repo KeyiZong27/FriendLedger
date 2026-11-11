@@ -106,6 +106,47 @@ final class LocalFirstUITests: XCTestCase {
         app.terminate()
     }
 
+    func testMonthlyAnalysisBreaksSpendingDownByCategoryAndStore() {
+        let app = makeApp()
+        app.launch()
+        completeSetup(in: app)
+        app.terminate()
+
+        app.launchEnvironment["LEDGER_TEST_CAPTURE"] =
+            "4.50|Starbucks;20.00|Safeway;30.00|Trader Joes;80.00|PG&E electric"
+        app.launch()
+        XCTAssertTrue(app.buttons["analysis-button"].waitForExistence(timeout: 10))
+        app.buttons["analysis-button"].tap()
+
+        let expense = app.staticTexts["month-expense"]
+        XCTAssertTrue(expense.waitForExistence(timeout: 5))
+        XCTAssertTrue(expense.label.contains("$134.50"), expense.label)
+        let overview = XCTAttachment(screenshot: app.screenshot())
+        overview.name = "analysis-overview"
+        overview.lifetime = .keepAlways
+        add(overview)
+        let utilities = app.descendants(matching: .any)["category-水电网络"].firstMatch
+        XCTAssertTrue(utilities.waitForExistence(timeout: 5), "Utilities must be its own category")
+        XCTAssertTrue(utilities.label.contains("$80.00") && utilities.label.contains("59.5%"), utilities.label)
+        let grocery = app.descendants(matching: .any)["category-超市"].firstMatch
+        XCTAssertTrue(grocery.label.contains("$50.00") && grocery.label.contains("37.2%"), grocery.label)
+
+        grocery.tap()
+        let safeway = app.descendants(matching: .any)["merchant-Safeway"].firstMatch
+        XCTAssertTrue(safeway.waitForExistence(timeout: 5), "Opening a category must list its stores")
+        XCTAssertTrue(safeway.label.contains("$20.00") && safeway.label.contains("40.0%"), safeway.label)
+        let traderJoes = app.descendants(matching: .any)["merchant-Trader Joes"].firstMatch
+        XCTAssertTrue(traderJoes.label.contains("$30.00") && traderJoes.label.contains("60.0%"), traderJoes.label)
+        let detail = XCTAttachment(screenshot: app.screenshot())
+        detail.name = "analysis-category"
+        detail.lifetime = .keepAlways
+        add(detail)
+
+        traderJoes.tap()
+        XCTAssertTrue(app.staticTexts["$30.00"].firstMatch.waitForExistence(timeout: 5), "A store must list its purchases")
+        app.terminate()
+    }
+
     func testAutomaticCardPaymentIsRecordedOnceAndSurvivesRelaunch() {
         let app = makeApp()
         app.launch()

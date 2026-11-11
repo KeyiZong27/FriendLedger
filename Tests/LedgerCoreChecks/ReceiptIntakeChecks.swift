@@ -12,7 +12,8 @@ func runReceiptIntakeChecks() throws {
     for (name, expected) in [
         ("STARBUCKS #1234", "咖啡"), ("Joe's Pizza Kitchen", "餐饮"), ("Trader Joe's", "超市"),
         ("Chevron 76", "加油"), ("Uber Trip", "交通"), ("CVS Pharmacy", "医疗药房"),
-        ("Marriott Downtown", "住宿"), ("AMC Theatres", "娱乐"), ("AT&T", "账单服务"),
+        ("Marriott Downtown", "住宿"), ("AMC Theatres", "娱乐"), ("AT&T", "水电网络"),
+        ("City Water District", "水电网络"), ("PG&E Electric", "水电网络"),
         ("Target Pharmacy", "医疗药房"), ("Walgreens Pharmacy", "医疗药房")
     ] {
         try check(MerchantTypeClassifier.suggest(merchantName: name) == expected,

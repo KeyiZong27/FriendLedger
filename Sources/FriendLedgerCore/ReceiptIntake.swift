@@ -3,7 +3,7 @@ import Foundation
 /// Offline keyword rules for U.S. merchants. It only suggests a type; unknown names return nil
 /// so the person confirms once and the merchant directory remembers the answer.
 public enum MerchantTypeClassifier {
-    public static let types = ["餐饮", "咖啡", "超市", "加油", "交通", "医疗药房", "购物", "住宿", "娱乐", "账单服务", "其他"]
+    public static let types = ["餐饮", "咖啡", "超市", "加油", "交通", "医疗药房", "购物", "住宿", "娱乐", "水电网络", "其他"]
     public static let incomeType = "收入"
 
     private static let rules: [(String, [String])] = [
@@ -22,7 +22,9 @@ public enum MerchantTypeClassifier {
         ("住宿", ["hotel", "motel", "airbnb", "marriott", "hilton", "hyatt", "resort", "inn"]),
         ("娱乐", ["cinema", "amc", "theatre", "theater", "netflix", "spotify", "ticketmaster", "bowling",
                   "golf", "museum", "steam"]),
-        ("账单服务", ["comcast", "verizon", "t mobile", "pg e", "utility", "insurance", "electric", "internet", "at t"])
+        ("水电网络", ["comcast", "xfinity", "spectrum", "verizon", "t mobile", "at t", "pg e", "pge", "utility",
+                     "utilities", "electric", "water bill", "water district", "sewer", "waste management",
+                     "internet", "gas bill", "trash"])
     ]
 
     /// Most specific (longest) matching keyword in the merchant name wins; item words are weaker evidence.

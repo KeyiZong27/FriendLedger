@@ -491,9 +491,12 @@ final class LedgerStore: ObservableObject {
             let store = LedgerStore(cache: cache, cloud: cloud, preferences: preferences)
             #if DEBUG
             // Lets UI tests exercise the same path a Shortcuts automation uses, without Shortcuts.
-            if testProfile != nil, let capture = environment["LEDGER_TEST_CAPTURE"] {
-                let parts = capture.split(separator: "|", maxSplits: 1).map(String.init)
-                if parts.count == 2 { _ = store.capturePurchase(amountText: parts[0], merchant: parts[1]) }
+            // Several payments are separated by ";", each written "amount|merchant".
+            if testProfile != nil, let captures = environment["LEDGER_TEST_CAPTURE"] {
+                for capture in captures.split(separator: ";") {
+                    let parts = capture.split(separator: "|", maxSplits: 1).map(String.init)
+                    if parts.count == 2 { _ = store.capturePurchase(amountText: parts[0], merchant: parts[1]) }
+                }
             }
             #endif
             return store
