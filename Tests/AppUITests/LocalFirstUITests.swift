@@ -106,6 +106,30 @@ final class LocalFirstUITests: XCTestCase {
         app.terminate()
     }
 
+    func testAutomaticCardPaymentIsRecordedOnceAndSurvivesRelaunch() {
+        let app = makeApp()
+        app.launch()
+        completeSetup(in: app)
+        app.terminate()
+
+        // Same code path as the Shortcuts action: the app is started with a payment to record.
+        app.launchEnvironment["LEDGER_TEST_CAPTURE"] = "$4.50|Starbucks"
+        app.launch()
+        let total = app.staticTexts["expense-total"]
+        XCTAssertTrue(total.waitForExistence(timeout: 10))
+        XCTAssertEqual(total.label, "$4.50")
+        XCTAssertTrue(app.staticTexts["咖啡 · Tester"].exists, "The store must be categorized automatically")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "自动记录")).firstMatch.exists,
+                      "Automatic entries must be marked")
+        app.terminate()
+
+        // The same payment reported again within two minutes (a trigger firing twice) is not counted twice.
+        app.launch()
+        XCTAssertTrue(app.staticTexts["expense-total"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["expense-total"].label, "$4.50")
+        app.terminate()
+    }
+
     func testCloudConfigurationFailureKeepsLocalBookUsable() {
         let app = makeApp()
         app.launch()

@@ -137,6 +137,36 @@ final class LedgerStore: ObservableObject {
         mutate(recordID) { try $0.addManualEntry(entry) }
     }
 
+    enum CaptureResult: Equatable {
+        case recorded(String)
+        case duplicate
+        case failed(String)
+    }
+
+    /// Entry point for card payments reported by Shortcuts. It works without the app on screen, so every
+    /// failure is returned in words instead of being shown in a window nobody is looking at.
+    func capturePurchase(amountText: String, merchant: String, date: Date = Date()) -> CaptureResult {
+        guard storageReady else { return .failed("本地账本尚未就绪，请打开家庭账本 App 查看提示") }
+        guard !nickname.isEmpty else { return .failed("请先打开家庭账本 App，设置称呼并创建账本") }
+        do {
+            var next = snapshot
+            guard let index = next.records.firstIndex(where: { $0.isAvailable && !$0.hasConflict }) else {
+                return .failed("没有可写入的账本，请打开家庭账本 App 处理同步提示")
+            }
+            let cents = try CapturedAmount.parse(amountText)
+            var outcome = CaptureOutcome.duplicate
+            try next.records[index].edit {
+                outcome = try $0.recordCapturedPurchase(amountCents: cents, merchant: merchant, date: date, author: nickname)
+            }
+            guard case .recorded(let category) = outcome else { return .duplicate }
+            try commit(next)
+            scheduleSync()
+            return .recorded(category)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
     func deleteEntry(_ entry: LedgerEntry, recordID: String) async {
         _ = mutate(recordID) { try $0.removeEntry(id: entry.id) }
     }
@@ -458,7 +488,15 @@ final class LedgerStore: ObservableObject {
                 }
                 preferences = suite
             } else { preferences = .standard }
-            return LedgerStore(cache: cache, cloud: cloud, preferences: preferences)
+            let store = LedgerStore(cache: cache, cloud: cloud, preferences: preferences)
+            #if DEBUG
+            // Lets UI tests exercise the same path a Shortcuts automation uses, without Shortcuts.
+            if testProfile != nil, let capture = environment["LEDGER_TEST_CAPTURE"] {
+                let parts = capture.split(separator: "|", maxSplits: 1).map(String.init)
+                if parts.count == 2 { _ = store.capturePurchase(amountText: parts[0], merchant: parts[1]) }
+            }
+            #endif
+            return store
         } catch {
             return LedgerStore(cache: nil, cloud: cloud, initialError: "无法打开本地存储：\(error.localizedDescription)")
         }

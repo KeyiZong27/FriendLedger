@@ -157,7 +157,9 @@ public struct LocalLedgerCache: Sendable {
         try directoryURL.setResourceValues(resources)
         let data = try JSONEncoder().encode(snapshot)
         #if os(iOS)
-        try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+        // Automatic card-payment capture runs while the phone is locked, so the file must stay writable
+        // after the first unlock; it is still encrypted at rest until then.
+        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         #else
         try data.write(to: fileURL, options: .atomic)
         #endif

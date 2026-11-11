@@ -158,7 +158,12 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(entry.note.isEmpty ? entry.category : entry.note).font(.headline).foregroundStyle(.primary)
                 Text("\(entry.category) · \(entry.author)")
-                Text(entry.date.formatted(date: .abbreviated, time: .omitted))
+                if entry.id.hasPrefix("auto-") {
+                    Label("自动记录，请核对", systemImage: "bolt.horizontal.circle")
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("auto-badge")
+                }
+                Text(entry.date.formatted(date: .abbreviated, time: .shortened))
             }
             .font(.caption).foregroundStyle(.secondary)
             Spacer()
@@ -267,6 +272,21 @@ struct SettingsView: View {
                             Text("对方接受邀请后，可一起往这个账本里添加记录。对方必须主动接受。")
                         }
                     }
+                }
+                Section {
+                    Text("""
+                    1. 打开“快捷指令” → 自动化 → 右上角 +
+                    2. 选择“钱包”（旧版叫“交易”），选好要自动记录的卡，选“立即运行”
+                    3. 添加操作“记录刷卡交易”（家庭账本），金额和商店分别选自动化提供的金额、商家变量
+                    4. 在自动化设置里打开“锁定时允许运行”
+                    你和太太的手机各设置一次。
+                    """)
+                    .font(.footnote)
+                    Link("打开快捷指令", destination: URL(string: "shortcuts://")!)
+                } header: {
+                    Text("自动记录 Apple Pay 付款")
+                } footer: {
+                    Text("只覆盖用 Apple Pay 付款的钱包卡；是否触发取决于发卡行，偶尔可能漏记。自动记录的条目会标为“自动记录”，请定期核对，同一笔 2 分钟内重复触发会被忽略。数据只在手机本机处理。")
                 }
                 Section("云端") {
                     Button("从当前 iCloud 加载账本", systemImage: "icloud.and.arrow.down") {
