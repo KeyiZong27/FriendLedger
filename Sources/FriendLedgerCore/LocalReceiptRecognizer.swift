@@ -29,7 +29,18 @@ public enum LocalReceiptRecognizer {
             guard let results = request.results, !results.isEmpty else {
                 throw FinanceError.invalidField("收据照片，未识别到文字")
             }
-            let text = results.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            let pieces = results.compactMap { observation -> ReceiptTextPiece? in
+                observation.topCandidates(1).first.map {
+                    ReceiptTextPiece(
+                        text: $0.string, topLeft: observation.topLeft,
+                        topRight: observation.topRight, bottomLeft: observation.bottomLeft
+                    )
+                }
+            }
+            let oriented = orientation.rawValue >= 5
+            let aspect = oriented ? CGFloat(image.height) / CGFloat(image.width)
+                : CGFloat(image.width) / CGFloat(image.height)
+            let text = ReceiptLayout.rows(pieces, aspectRatio: aspect).joined(separator: "\n")
             let fingerprint = SHA256.hash(data: imageData).map { String(format: "%02x", $0) }.joined()
             return try ReceiptTextParser.parse(text, imageFingerprint: fingerprint)
         }

@@ -6,6 +6,16 @@
 	objectVersion = 71;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		B0000000000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000002;
+			remoteInfo = FriendLedger;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		A00000000000000000000005 /* FriendLedger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FriendLedger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000002 /* FriendLedgerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FriendLedgerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -18,8 +28,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		B00000000000000000000005 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A00000000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B00000000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -51,18 +67,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		B00000000000000000000001 /* FriendLedgerUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = B00000000000000000000007;
-			buildPhases = (B00000000000000000000004, B00000000000000000000005, B00000000000000000000006);
-			buildRules = ();
-			dependencies = (B0000000000000000000000A);
-			fileSystemSynchronizedGroups = (B00000000000000000000003);
-			name = FriendLedgerUITests;
-			productName = FriendLedgerUITests;
-			productReference = B00000000000000000000002;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 		A00000000000000000000002 /* FriendLedger */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A00000000000000000000011 /* Build configuration list for PBXNativeTarget "FriendLedger" */;
@@ -86,6 +90,27 @@
 			productReference = A00000000000000000000005 /* FriendLedger.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B00000000000000000000001 /* FriendLedgerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B00000000000000000000007 /* Build configuration list for PBXNativeTarget "FriendLedgerUITests" */;
+			buildPhases = (
+				B00000000000000000000004 /* Sources */,
+				B00000000000000000000005 /* Frameworks */,
+				B00000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B0000000000000000000000A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B00000000000000000000003 /* Tests/AppUITests */,
+			);
+			name = FriendLedgerUITests;
+			productName = FriendLedgerUITests;
+			productReference = B00000000000000000000002 /* FriendLedgerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -98,12 +123,12 @@
 					A00000000000000000000002 = {
 						CreatedOnToolsVersion = 16.0;
 						SystemCapabilities = {
-							com.apple.iCloud = {
-								enabled = 1;
-							};
 							B00000000000000000000001 = {
 								CreatedOnToolsVersion = 27.2;
 								TestTargetID = A00000000000000000000002;
+							};
+							com.apple.iCloud = {
+								enabled = 1;
 							};
 						};
 					};
@@ -130,8 +155,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		B00000000000000000000006 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A0000000000000000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B00000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -141,8 +172,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B00000000000000000000004 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A00000000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B00000000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -151,51 +188,15 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXContainerItemProxy section */
-		B0000000000000000000000B = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A00000000000000000000001;
-			proxyType = 1;
-			remoteGlobalIDString = A00000000000000000000002;
-			remoteInfo = FriendLedger;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXTargetDependency section */
-		B0000000000000000000000A = {
+		B0000000000000000000000A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A00000000000000000000002;
-			targetProxy = B0000000000000000000000B;
+			target = A00000000000000000000002 /* FriendLedger */;
+			targetProxy = B0000000000000000000000B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		B00000000000000000000008 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.FriendLedgerUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_TARGET_NAME = FriendLedger;
-			};
-			name = Debug;
-		};
-		B00000000000000000000009 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.FriendLedgerUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_TARGET_NAME = FriendLedger;
-			};
-			name = Release;
-		};
 		A00000000000000000000012 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -268,15 +269,35 @@
 			};
 			name = Release;
 		};
+		B00000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FriendLedgerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = FriendLedger;
+			};
+			name = Debug;
+		};
+		B00000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.FriendLedgerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = FriendLedger;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		B00000000000000000000007 = {
-			isa = XCConfigurationList;
-			buildConfigurations = (B00000000000000000000008, B00000000000000000000009);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		A00000000000000000000010 /* Build configuration list for PBXProject "FriendLedger" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -291,6 +312,15 @@
 			buildConfigurations = (
 				A00000000000000000000014 /* Debug */,
 				A00000000000000000000015 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B00000000000000000000007 /* Build configuration list for PBXNativeTarget "FriendLedgerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B00000000000000000000008 /* Debug */,
+				B00000000000000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

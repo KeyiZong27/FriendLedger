@@ -47,7 +47,39 @@ public enum MerchantTypeClassifier {
                 if matched, keyword.count > (best?.length ?? 0) { best = (type, keyword.count) }
             }
         }
+        if best == nil {
+            // Photos misread a letter or two ("FRADER JOES"); allow one error in long brand names only.
+            for (type, keywords) in rules {
+                for keyword in keywords where keyword.count >= 7 && fuzzyContains(normalized, keyword) {
+                    if keyword.count > (best?.length ?? 0) { best = (type, keyword.count) }
+                }
+            }
+        }
         return best?.type
+    }
+
+    private static func fuzzyContains(_ text: String, _ keyword: String) -> Bool {
+        let haystack = Array(text)
+        let needle = Array(keyword)
+        for length in (needle.count - 1)...(needle.count + 1) where haystack.count >= length {
+            for start in 0...(haystack.count - length)
+            where editDistance(Array(haystack[start..<(start + length)]), needle) <= 1 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func editDistance(_ a: [Character], _ b: [Character]) -> Int {
+        var previous = Array(0...b.count)
+        for (i, left) in a.enumerated() {
+            var current = [i + 1]
+            for (j, right) in b.enumerated() {
+                current.append(min(previous[j + 1] + 1, current[j] + 1, previous[j] + (left == right ? 0 : 1)))
+            }
+            previous = current
+        }
+        return previous[b.count]
     }
 }
 

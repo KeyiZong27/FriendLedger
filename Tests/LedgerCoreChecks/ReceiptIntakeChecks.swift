@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import FriendLedgerCore
 
@@ -21,6 +22,51 @@ func runReceiptIntakeChecks() throws {
     try check(MerchantTypeClassifier.suggest(merchantName: "Across Town LLC") == nil,
               "Short keywords must match whole words only")
     try check(MerchantTypeClassifier.suggest(merchantName: "Zed Co") == nil, "Unknown merchants must stay unclassified")
+    try check(MerchantTypeClassifier.suggest(merchantName: "11 .FRADER JOE'S") == "超市", "One misread letter must still classify")
+    try check(MerchantTypeClassifier.suggest(merchantName: "Wa1mart") == "超市", "One misread digit must still classify")
+    try check(MerchantTypeClassifier.suggest(merchantName: "Hotel Intel") == "住宿", "Words containing tel must not be noise")
+
+    // Real photos: labels and prices arrive as separate blocks, on a tilted page.
+    func piece(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat) -> ReceiptTextPiece {
+        ReceiptTextPiece(text: text, box: CGRect(x: x, y: y, width: width, height: 0.02))
+    }
+    let tilted = ReceiptLayout.rows([
+        piece("SUBTOTAL", x: 0.1, y: 0.50, width: 0.2), piece("27.13", x: 0.7, y: 0.51, width: 0.1),
+        piece("TOTAL", x: 0.1, y: 0.40, width: 0.15), piece("29.02", x: 0.7, y: 0.405, width: 0.1),
+        piece("MILK", x: 0.1, y: 0.60, width: 0.1), piece("4.72", x: 0.7, y: 0.60, width: 0.1)
+    ])
+    try check(tilted == ["MILK 4.72", "SUBTOTAL 27.13", "TOTAL 29.02"], "Rows must join labels with prices: \(tilted)")
+    let slope = ReceiptLayout.rows((0..<8).flatMap { row -> [ReceiptTextPiece] in
+        let y = 0.8 - CGFloat(row) * 0.05
+        // A 6-degree-style tilt: the right-hand price sits lower than its label.
+        return [
+            ReceiptTextPiece(text: "ITEM\(row) LONGNAME", topLeft: CGPoint(x: 0.1, y: y + 0.02),
+                             topRight: CGPoint(x: 0.4, y: y + 0.02 - 0.03), bottomLeft: CGPoint(x: 0.1, y: y)),
+            ReceiptTextPiece(text: "\(row).99", topLeft: CGPoint(x: 0.7, y: y - 0.06 + 0.02),
+                             topRight: CGPoint(x: 0.8, y: y - 0.06 + 0.02 - 0.01), bottomLeft: CGPoint(x: 0.7, y: y - 0.06))
+        ]
+    })
+    try check(slope.count == 8 && slope.allSatisfy { $0.contains("ITEM") && $0.contains(".99") },
+              "Tilt must be compensated: \(slope)")
+
+    let walmart = try ReceiptTextParser.parse("""
+    Give us feedback @ survey.walmart.com
+    Thank you! ID #: 7QDD9S15SK2
+    Walmart.
+    ST# 00109 OP# 009046 TE# 46 TR# 06069 4.72 Y
+    HUMMUS W/RO 040822017510 F 4.72 Y
+    SUBTOTAL 27.13
+    TAX2 6.9750 % 1.89
+    TOTAL 29.02
+    VISA TEND 29.02
+    CHANGE DUE 0.00
+    29.02 TOTAL PURCHASE
+    09/08/21 21:03:40
+    """)
+    try check(walmart.suggestedMerchantName == "Walmart", "Noise rows must not become the store: \(String(describing: walmart.suggestedMerchantName))")
+    try check(walmart.suggestedTotalCents == 2902 && walmart.suggestedTaxCents == 189, "Price-first totals and TAX2 must parse")
+    try check(walmart.suggestedItems.map(\.name) == ["HUMMUS W/RO"], "Product codes and receipt IDs must not become items: \(walmart.suggestedItems)")
+    try check(walmart.suggestedDay == ReceiptDay(year: 2021, month: 9, day: 8), "Two-digit-year receipt date must parse")
     try check(MerchantTypeClassifier.suggest(merchantName: "Zed Co", itemNames: ["Chicken Burger", "Pizza Slice"]) == "餐饮",
               "Two matching items can classify an unknown merchant")
     try check(MerchantTypeClassifier.suggest(merchantName: "Zed Co", itemNames: ["Burger", "Hotel Fee"]) == nil,

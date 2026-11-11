@@ -17,16 +17,15 @@ public enum ReceiptTextParser {
         var items: [ReceiptItem] = []
         var taxes: [Int64] = []
         var warnings = ["识别结果必须核对；商家、日期、金额及明细均可能识别不完整。"]
-        var merchant: String?
+        var candidateRows: [String] = []
+        let taxLabelPattern = try NSRegularExpression(pattern: #"^(?:SALES\s+)?TAX\s*\d*(?:\s+[\d.]+\s*%)?$"#)
         for (index, rawLine) in lines.enumerated() {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
             let matches = pricePattern.matches(in: line, range: range)
-            if merchant == nil, matches.isEmpty,
-               line.rangeOfCharacter(from: .letters) != nil,
-               !["WELCOME", "THANK YOU", "RECEIPT"].contains(line.uppercased()) {
-                merchant = line
+            if matches.isEmpty, candidateRows.count < 12, line.rangeOfCharacter(from: .letters) != nil {
+                candidateRows.append(line)
             }
             guard let match = matches.last,
                   let priceRange = Range(match.range(at: 1), in: line),
@@ -39,25 +38,32 @@ public enum ReceiptTextParser {
                 continue
             }
             let upper = label.uppercased()
+            // A price can lead the row ("29.02 TOTAL PURCHASE"); only totals are read that way.
+            let totalLabel = label.isEmpty && suffix.filter(\.isLetter).count >= 4 ? suffix : label
+            let upperTotalLabel = totalLabel.uppercased()
             let excludedTotal = ["SAVING", "DISCOUNT", "ITEM", "TAX", "SUBTOTAL", "SUB TOTAL"]
-                .contains { upper.contains($0) }
-            if totalPattern.firstMatch(in: label, range: NSRange(label.startIndex..<label.endIndex, in: label)) != nil,
+                .contains { upperTotalLabel.contains($0) }
+            if totalPattern.firstMatch(in: totalLabel, range: NSRange(totalLabel.startIndex..<totalLabel.endIndex, in: totalLabel)) != nil,
                !excludedTotal {
                 if matches.count == 1, amount > 0 {
-                    totals.append(ReceiptTotalCandidate(label: label, amountCents: amount, lineNumber: index + 1))
+                    totals.append(ReceiptTotalCandidate(label: totalLabel, amountCents: amount, lineNumber: index + 1))
                 } else {
                     warnings.append("第 \(index + 1) 行总额不明确，请手动核对。")
                 }
-            } else if (upper == "TAX" || upper == "SALES TAX"), matches.count == 1 {
+            } else if matches.count == 1,
+                      taxLabelPattern.firstMatch(in: upper, range: NSRange(upper.startIndex..<upper.endIndex, in: upper)) != nil {
                 taxes.append(amount)
             } else if !label.isEmpty, matches.count == 1,
                       !["TOTAL", "TAX", "CASH", "CHANGE", "TENDER", "VISA", "MASTERCARD",
                         "AMEX", "DEBIT", "CREDIT", "BALANCE", "SAVING", "DISCOUNT", "COUPON",
-                        "TIP", "GRATUITY", "SERVICE", "PAYMENT", "APPROVED", "AMOUNT", "QTY", "@"]
-                        .contains(where: { upper.contains($0) }) {
-                items.append(ReceiptItem(name: label, lineTotalCents: amount))
+                        "TIP", "GRATUITY", "SERVICE", "PAYMENT", "APPROVED", "AMOUNT", "QTY", "@",
+                        "#", "VOID", "TEND"]
+                        .contains(where: { upper.contains($0) }),
+                      let name = Self.itemName(label) {
+                items.append(ReceiptItem(name: name, lineTotalCents: amount))
             }
         }
+        let merchant = pickMerchant(candidateRows)
         if totals.isEmpty { warnings.append("未找到明确的 TOTAL / AMOUNT DUE，请手动输入总额。") }
         if Set(totals.map(\.amountCents)).count > 1 {
             warnings.append("发现多个不同总额，不能自动选择；请核对最终支付金额及小费。")
@@ -72,6 +78,34 @@ public enum ReceiptTextParser {
             suggestedTaxCents: taxes.count == 1 ? taxes.first : nil, warnings: warnings,
             suggestedDay: days.count == 1 ? days.first : nil
         )
+    }
+
+    /// Drops product codes and department flags ("MILK 123456789012 F" -> "MILK"); code-only rows are not items.
+    private static func itemName(_ label: String) -> String? {
+        var words = label.split(separator: " ").map(String.init)
+        words.removeAll { $0.count >= 8 && $0.filter(\.isNumber).count >= 8 }
+        while let last = words.last, last.count == 1, last.first?.isLetter == true { words.removeLast() }
+        let name = words.joined(separator: " ")
+        return name.filter(\.isLetter).count >= 2 ? name : nil
+    }
+
+    /// Prefers a top row that looks like a known brand; otherwise the first plausible name row.
+    private static func pickMerchant(_ rows: [String]) -> String? {
+        let hardNoise = ["thank", "feedback", "survey", "www", "http", ".com", "@", "welcome", "receipt", "customer copy"]
+        // Store numbers and phone lines often share a row with the name; keep only what precedes them.
+        let softNoise = ["id #", "store #", "mgr"]
+        let plausible = rows.compactMap { row -> String? in
+            var text = row
+            guard !hardNoise.contains(where: { text.lowercased().contains($0) }) else { return nil }
+            for marker in softNoise {
+                if let range = text.range(of: marker, options: .caseInsensitive) { text = String(text[..<range.lowerBound]) }
+            }
+            let cleaned = text.drop { !$0.isLetter }.reversed().drop { !$0.isLetter && $0 != "." && $0 != "'" }.reversed()
+            let name = String(cleaned).trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+            let letters = name.filter(\.isLetter).count
+            return letters >= 2 && letters >= name.filter(\.isNumber).count ? name : nil
+        }
+        return plausible.first { MerchantTypeClassifier.suggest(merchantName: $0) != nil } ?? plausible.first
     }
 
     private static func receiptDays(in text: String) -> [ReceiptDay] {

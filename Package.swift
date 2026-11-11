@@ -13,6 +13,11 @@ let package = Package(
             path: "Tests/LedgerCoreChecks"
         ),
         .executableTarget(
+            name: "ReceiptScan",
+            dependencies: ["FriendLedgerCore"],
+            path: "Tools/ReceiptScan"
+        ),
+        .executableTarget(
             name: "ReceiptOCRChecks",
             dependencies: ["FriendLedgerCore"],
             path: "Tests/ReceiptOCRChecks"
