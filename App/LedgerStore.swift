@@ -19,7 +19,8 @@ final class LedgerStore: ObservableObject {
     var isLoading: Bool { isSyncing || isConnecting }
     var cloudEnabled: Bool { snapshot.discoveryAccountID != nil }
     var selectedCloudAccountID: String? { snapshot.discoveryAccountID }
-    var memberNickname: String { preferences.string(forKey: "memberNickname") ?? "" }
+    @Published private(set) var nickname = ""
+    var needsSetup: Bool { storageReady && nickname.isEmpty }
     private let cache: LocalLedgerCache?
     private let preferences: UserDefaults
     private let cloud: any LedgerCloudClient
@@ -34,6 +35,7 @@ final class LedgerStore: ObservableObject {
         self.cache = cache
         self.cloud = cloud
         self.preferences = preferences
+        nickname = preferences.string(forKey: "memberNickname") ?? ""
         do {
             guard let cache else { throw FinanceError.invalidField("本地存储位置") }
             snapshot = try cache.load()
@@ -54,7 +56,43 @@ final class LedgerStore: ObservableObject {
     }
 
     func record(id: String) -> StoredLedger? { records.first { $0.id == id } }
-    func rememberNickname(_ name: String) { preferences.set(name, forKey: "memberNickname") }
+    private func validNickname(_ name: String) throws -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 30 else {
+            throw FinanceError.invalidField("称呼需为 1–30 个字")
+        }
+        return trimmed
+    }
+
+    /// First launch: everyone starts with their own local ledger, no account or network needed.
+    func completeSetup(nickname name: String) async -> Bool {
+        do {
+            let trimmed = try validNickname(name)
+            if records.isEmpty {
+                guard await createLedger(name: "\(trimmed)的账本") != nil else { return false }
+            }
+            preferences.set(trimmed, forKey: "memberNickname")
+            nickname = trimmed
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func updateNickname(_ name: String) -> Bool {
+        do {
+            let trimmed = try validNickname(name)
+            preferences.set(trimmed, forKey: "memberNickname")
+            nickname = trimmed
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
 
     func retryLocalLoad() {
         do {

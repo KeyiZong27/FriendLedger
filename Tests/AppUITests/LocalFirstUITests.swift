@@ -13,17 +13,21 @@ final class LocalFirstUITests: XCTestCase {
         return app
     }
 
-    private func createLedger(in app: XCUIApplication) {
-        let create = app.buttons["create-local-ledger"]
-        XCTAssertTrue(create.waitForExistence(timeout: 10))
-        create.tap()
-        let name = app.textFields["ledger-name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
+    private func completeSetup(in app: XCUIApplication) {
+        let name = app.textFields["setup-nickname"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
         name.tap()
-        name.typeText("Local test")
-        app.buttons["save-ledger"].tap()
+        name.typeText("Tester")
+        app.buttons["setup-continue"].tap()
         XCTAssertTrue(app.buttons["new-entry"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["local-sync-status"].label.contains("仅保存在本机"))
+        let ledgerName = app.descendants(matching: .any)["ledger-name-label"].firstMatch
+        XCTAssertTrue(ledgerName.waitForExistence(timeout: 5))
+        XCTAssertTrue(ledgerName.label.contains("Tester的账本"), "Setup must create a personal ledger automatically")
+    }
+
+    private func openSettings(in app: XCUIApplication) {
+        app.buttons["settings-button"].tap()
+        XCTAssertTrue(app.switches["sync-toggle"].waitForExistence(timeout: 5))
     }
 
     private func addEntry(in app: XCUIApplication, note: String) {
@@ -35,10 +39,7 @@ final class LocalFirstUITests: XCTestCase {
         let memo = app.textFields["entry-note"]
         memo.tap()
         memo.typeText(note)
-        let author = app.textFields["entry-author"]
-        if !author.isHittable { app.swipeUp() }
-        author.tap()
-        author.typeText("Tester")
+        XCTAssertFalse(app.textFields["entry-author"].exists, "Nickname is configured once, not per entry")
         app.buttons["save-entry"].tap()
         let total = app.staticTexts["expense-total"]
         XCTAssertTrue(total.waitForExistence(timeout: 5))
@@ -49,17 +50,19 @@ final class LocalFirstUITests: XCTestCase {
         let app = makeApp()
         let start = Date()
         app.launch()
-        XCTAssertTrue(app.buttons["create-local-ledger"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["setup-nickname"].waitForExistence(timeout: 10))
         XCTAssertLessThan(Date().timeIntervalSince(start), 15, "Local startup must not wait for iCloud")
-        createLedger(in: app)
+        completeSetup(in: app)
         addEntry(in: app, note: "Persistent entry")
         XCTAssertFalse(app.descendants(matching: .any)["ledger-error"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["sync-progress"].exists)
         app.terminate()
         app.launch()
         XCTAssertTrue(app.staticTexts["expense-total"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.textFields["setup-nickname"].exists, "Setup must not repeat after relaunch")
         XCTAssertEqual(app.staticTexts["expense-total"].label, "$12.34")
         XCTAssertTrue(app.staticTexts["Persistent entry"].exists)
+        openSettings(in: app)
         XCTAssertTrue(app.staticTexts["local-sync-status"].label.contains("仅保存在本机"))
         XCTAssertFalse(app.descendants(matching: .any)["ledger-error"].exists)
         app.terminate()
@@ -68,10 +71,10 @@ final class LocalFirstUITests: XCTestCase {
     func testSlowCloudShowsProgressWithoutBlockingLocalEntry() {
         let app = makeApp(slowCloud: true)
         app.launch()
-        createLedger(in: app)
-        let toggle = app.switches["sync-toggle"]
-        XCTAssertTrue(toggle.exists)
-        toggle.switches.firstMatch.tap()
+        completeSetup(in: app)
+        openSettings(in: app)
+        app.switches["sync-toggle"].switches.firstMatch.tap()
+        app.buttons["完成"].tap()
         let progress = app.descendants(matching: .any)["sync-progress"].firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(progress.frame.width, 0)
@@ -87,12 +90,14 @@ final class LocalFirstUITests: XCTestCase {
     func testCloudConfigurationFailureKeepsLocalBookUsable() {
         let app = makeApp()
         app.launch()
-        createLedger(in: app)
+        completeSetup(in: app)
+        openSettings(in: app)
         app.switches["sync-toggle"].switches.firstMatch.tap()
         let error = app.staticTexts["ledger-error"]
-        XCTAssertTrue(error.waitForExistence(timeout: 5))
-        XCTAssertTrue(error.label.contains("开启同步失败"))
+        XCTAssertTrue(error.waitForExistence(timeout: 5) || app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "开启同步失败")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["local-sync-status"].label.contains("仅保存在本机"))
+        app.buttons["完成"].tap()
         addEntry(in: app, note: "Saved after cloud failure")
         app.terminate()
     }
